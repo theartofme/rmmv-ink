@@ -190,437 +190,502 @@ The following hashtags can be used:
  */
 (function () {
 
-    let active = false;
-    let variableBindings = {};
-    let switchBindings = {};
-    const inkStoryFilename = "data/inkscript.ink.json";
-
-    // loading data
-
-    function loadInkData(filename) {
-        const fs = require('fs');
-        const path = require('path');
-        const base = path.dirname(process.mainModule.filename);
-        const pathname = path.join(base, filename);
-        return fs.readFileSync(pathname, { encoding: 'utf8' }).replace(/^\uFEFF/, ''); //strips the BOM
-    }
-
-    function loadInkStory(filename) {
-        const Story = inkjs.Story;
-        return new Story(loadInkData(filename));
-    }
-
 //////////////////////////////////////////////////////////////////
-// save/load
+// LWP_InkManager
+// A class to hold all the Ink methods and data, so it can be
+// used and overridden more easily by other plugins
 //////////////////////////////////////////////////////////////////
 
-    function save(story) {
-        return {
-            state: story.state.ToJson(),
-            variables: variableBindings,
-            switches: switchBindings
-        };
-    }
+// global visibility
+LWP_InkManager = function() {
+    throw new Error('This is a static class');
+}
 
-    function load(story, savedData) {
-        console.log("LOAD", savedData, savedData.state);
-        story.state.LoadJson(savedData.state);
-        variableBindings = savedData.variables;
-        switchBindings = savedData.switches;
-    }
-
-    const oldDataManagerMakeSaveContents = DataManager.makeSaveContents;
-    DataManager.makeSaveContents = function() {
-        let contents = oldDataManagerMakeSaveContents.call(this);
-        contents.LWP_Ink = save(getStory());
-        return contents;
-    }
-
-    const oldDataManagerExtractSaveContents = DataManager.extractSaveContents;
-    DataManager.extractSaveContents = function(contents) {
-        oldDataManagerExtractSaveContents.call(this, contents);
-        load(getStory(), contents.LWP_Ink);
-    }
-
-//////////////////////////////////////////////////////////////////
+//----------------------------------------------------
 // init
-//////////////////////////////////////////////////////////////////
 
-    let _inkStory = null;
-    function getStory() {
-        if (!_inkStory) {
-            _inkStory = loadInkStory(inkStoryFilename);
-            bindFunctions(_inkStory);
-        }
-        return _inkStory;
+LWP_InkManager._inkStory = null;    // only accessed directly by LWP_InkManager.getStory()
+LWP_InkManager.inkStoryFilename = "data/inkscript.ink.json";
+LWP_InkManager.active = false;
+LWP_InkManager.variableBindings = {};
+LWP_InkManager.switchBindings = {};
+LWP_InkManager._queuedActions = [];
+LWP_InkManager._childInterpreter = null;
+
+LWP_InkManager.getStory = function() {
+    if (!this._inkStory) {
+        this._inkStory = this.loadInkStory(this.inkStoryFilename);
+        this.bindFunctions(this._inkStory);
     }
+    return this._inkStory;
+}
 
-//////////////////////////////////////////////////////////////////
-// functions exposed to Ink
-//////////////////////////////////////////////////////////////////
+LWP_InkManager.loadInkData = function(filename) {
+    const fs = require('fs');
+    const path = require('path');
+    const base = path.dirname(process.mainModule.filename);
+    const pathname = path.join(base, filename);
+    return fs.readFileSync(pathname, { encoding: 'utf8' }).replace(/^\uFEFF/, ''); //strips the BOM
+}
 
-    function bindFunctions(story) {
-        story.BindExternalFunction ("link_var", (variableRef, rmmvVariable) => {
-            console.log(variableRef, rmmvVariable);
-            variableBindings[variableRef] = rmmvVariable;
-            story.variablesState[variableRef] = $gameVariables.value(rmmvVariable);
-        });
-        story.BindExternalFunction ("link_switch", (variableRef, rmmvSwitch) => {
-            console.log(variableRef, rmmvSwitch);
-            switchBindings[variableRef] = rmmvSwitch;
-            story.variablesState[variableRef] = $gameSwitches.value(rmmvSwitch);
-        });
-        story.BindExternalFunction ("rmmv_var", (variable) => {
-            return $gameVariables.value(variable);
-        });
-        story.BindExternalFunction ("rmmv_switch", (variable) => {
-            return $gameSwitches.value(variable);
-        });
-        story.BindExternalFunction ("rmmv_set_var", (variable, value) => {
-            $gameVariables.setValue(variable, value);
-        });
-        story.BindExternalFunction ("rmmv_set_switch", (variable, value) => {
-            $gameSwitches.setValue(variable, value);
-        });
-    }
+LWP_InkManager.loadInkStory = function(filename) {
+    const Story = inkjs.Story;
+    return new Story(this.loadInkData(filename));
+}
 
-//////////////////////////////////////////////////////////////////
-// battle
-//////////////////////////////////////////////////////////////////
+//----------------------------------------------------
+// external function bindings
 
-    function startBattle(troopId, winTarget, escapeTarget, loseTarget) {
-        if (!$gameParty.inBattle()) {
-            troopId = troopId || $gamePlayer.makeEncounterTroopId();
-            if ($dataTroops[troopId]) {
-                BattleManager.setup(troopId, !!escapeTarget, !!loseTarget);
-                BattleManager.setEventCallback(result => {
-                    if (result === 0 && winTarget) {
-                        // success
-                        setInkKnot(winTarget);
-                        go();
-                    } else if (result === 1 && escapeTarget) {
-                        // escape/abort
-                        setInkKnot(escapeTarget);
-                        go();
-                    } else if (result === 2 && loseTarget) {
-                        // defeat
-                        setInkKnot(loseTarget);
-                        go();
-                    }
-                });
-                $gamePlayer.makeEncounterCount();
-                SceneManager.push(Scene_Battle);
-            }
-        }
-    }
+LWP_InkManager.bindFunctions = function(story) {
+    story.BindExternalFunction ("link_var", this.external_LinkVar);
+    story.BindExternalFunction ("link_switch", this.external_LinkSwitch);
+    story.BindExternalFunction ("rmmv_var", this.external_rmmvVar);
+    story.BindExternalFunction ("rmmv_switch", this.external_rmmvSwitch);
+}
 
-//////////////////////////////////////////////////////////////////
-// common events
-//////////////////////////////////////////////////////////////////
+LWP_InkManager.external_LinkVar = function(variableRef, rmmvVariable) {
+    console.log(variableRef, rmmvVariable);
+    this.variableBindings[variableRef] = rmmvVariable;
+    this.getStory().variablesState[variableRef] = $gameVariables.value(rmmvVariable);
+}.bind(LWP_InkManager);
 
-    let _childInterpreter = null;
-    function updateChild() {
-        if (_childInterpreter) {
-            _childInterpreter.update();
-            if (_childInterpreter.isRunning()) {
-                return true;
-            } else {
-                _childInterpreter = null;
-            }
-        }
-        return false;
+LWP_InkManager.external_LinkSwitch = function(variableRef, rmmvSwitch) {
+    console.log(variableRef, rmmvSwitch);
+    this.switchBindings[variableRef] = rmmvSwitch;
+    this.getStory().variablesState[variableRef] = $gameSwitches.value(rmmvSwitch);
+}.bind(LWP_InkManager);
+
+LWP_InkManager.external_rmmvVar = function(variable) {
+    return $gameVariables.value(variable);
+}.bind(LWP_InkManager);
+
+LWP_InkManager.external_rmmvSwitch = function(variable) {
+    return $gameSwitches.value(variable);
+}.bind(LWP_InkManager);
+
+//----------------------------------------------------
+// save/load
+
+LWP_InkManager.makeSaveContents = function() {
+    const story = this.getStory();
+    return {
+        state: story.state.ToJson(),
+        variables: this.variableBindings,
+        switches: this.switchBindings
     };
-    
-    function runCommonEvent(event) {
-        const list = $dataCommonEvents[event].list
-        _childInterpreter = new Game_Interpreter(1);
-        _childInterpreter.setup(list, 0);
+}
+
+LWP_InkManager.extractSaveContents = function(savedData) {
+    const story = this.getStory();
+    console.log("LOAD", savedData, savedData.state);
+    story.state.LoadJson(savedData.state);
+    this.variableBindings = savedData.variables;
+    this.switchBindings = savedData.switches;
+}
+
+//----------------------------------------------------
+// state
+
+LWP_InkManager.go = function(optionalPath) {
+    if (optionalPath) {
+        this.setInkPath(optionalPath);
     }
+    this.active = true;
+}
 
-//////////////////////////////////////////////////////////////////
-// variable syncing for automatically synced variables
-//////////////////////////////////////////////////////////////////
-    
-    function syncVariablesToRmmv(story) {
-        for (let inkVariable of Object.keys(variableBindings)) {
-            $gameVariables.setValue(variableBindings[inkVariable], story.variablesState[inkVariable]);
-        }
-        for (let inkVariable of Object.keys(switchBindings)) {
-            $gameSwitches.setValue(switchBindings[inkVariable], story.variablesState[inkVariable]);
-        }
-    }
+LWP_InkManager.stop = function() {
+    this.active = false;
+}
 
-    function syncVariablesToInk(story) {
-        for (let inkVariable of Object.keys(variableBindings)) {
-            story.variablesState[inkVariable] = $gameVariables.value(variableBindings[inkVariable]);
-        }
-        for (let inkVariable of Object.keys(switchBindings)) {
-            story.variablesState[inkVariable] = $gameSwitches.value(switchBindings[inkVariable]);
-        }
-    }
+LWP_InkManager.isActive = function() {
+    return (this._childInterpreter && this._childInterpreter.isRunning()) || this.active;
+}
 
-//////////////////////////////////////////////////////////////////
-// Content output and choices
-//////////////////////////////////////////////////////////////////
+//----------------------------------------------------
+// Ink paths
 
-    function setInkKnot(target) {
-        getStory().ChoosePathString(target);
-    }
+LWP_InkManager.setInkPath = function(target) {
+    // TODO: call resolvePath on this?
+    this.getStory().ChoosePathString(target);
+}
 
-    function showContent(content, tags) {
-        // TODO: word wrapping, buffering leftover text for next time
-        const validFaceNames = listInPath('img/faces', 'png');
-        let face = '';
-        let faceIndex = 0;
-        let position = 2;
-        let background = 0;
+// Takes what might be a partial path (stitch only), and returns a fully qualified
+// path including the knot. If the path is already qualified, returns it as-is; if
+// the path is already the name of a knot, also returns it as-is. If neither of
+// those conditions are true, prepends the current knot to the path.
+// This does not guarantee that the result is a valid path; Ink provides no mechanism
+// to list paths, and the only way to validate it is by attempting to use it, which
+// we might not want to do yet.
+LWP_InkManager.resolvePath = function(path) {
+    if (path === null || path === undefined) return path;
+    // already fully qualified
+    if (path.indexOf('.') !== -1) return path;
+    const story = this.getStory();
+    // the name of a knot - doesn't need further qualification
+    if (story.KnotContainerWithName(path)) return path;
+    // getting the current knot is *really* hacky
+    const previousPath = story.state.callStack.currentThread.previousPointer.path.toString();
+    const dotIndex = previousPath.indexOf('.');
+    const currentKnot = dotIndex === -1 ? previousPath : previousPath.substring(0, dotIndex);
+    return currentKnot + '.' + path;
+}
 
-        for (let tag of tags) {
-            faceTagCandidate = tag.split(',');
-            if (validFaceNames.indexOf(faceTagCandidate[0]) !== -1) {
-                face = faceTagCandidate[0];
-                if (faceTagCandidate.length > 1) {
-                    faceIndex = faceTagCandidate[1];
-                }
-            } else if (/top/i.test(tag)) {
-                position = 0;
-            } else if (/middle/i.test(tag)) {
-                position = 1;
-            } else if (/bottom/i.test(tag)) {
-                position = 2;
-            } else if (/window/i.test(tag)) {
-                background = 0;
-            } else if (/dim/i.test(tag)) {
-                background = 1;
-            } else if (/transparent/i.test(tag)) {
-                background = 2;
-            }
-        }
-        $gameMessage.setFaceImage(face, faceIndex);
-        $gameMessage.setBackground(background);
-        $gameMessage.setPositionType(position);
-        if ($gameMessage.addText) {
-            $gameMessage.addText(content);
-        } else {
-            $gameMessage.addText(content);
-        }
-        console.log(tags);
-    }
+//----------------------------------------------------
+// action queue - for when we want to do something when
+// the message box isn't busy
 
-    function showChoices(choices, callback) {
-        // TODO: error on choices that are too long?
-        $gameMessage.setChoices(choices, 0 /*defaultType*/, -1 /*cancelType*/);
-        $gameMessage.setChoiceBackground(0);
-        $gameMessage.setChoicePositionType(2);
-        $gameMessage.setChoiceCallback(callback);
-    }
+LWP_InkManager.enqueueAction = function(action) {
+    this._queuedActions.push(action);
+}
 
-//////////////////////////////////////////////////////////////////
-// update
-//////////////////////////////////////////////////////////////////
-
-    function go() {
-        active = true;
-    }
-
-    function stop() {
-        active = false;
-    }
-
-    function isActive() {
-        return (_childInterpreter && _childInterpreter.isRunning()) || active;
-    }
-
-    const _queuedActions = [];
-    function enqueue(action) {
-        _queuedActions.push(action);
-    }
-    function dequeue() {
-        const next = _queuedActions.splice(0, 1)[0];
+LWP_InkManager.dequeueAndRunAction = function() {
+    if (this._queuedActions.length > 0) {
+        const next = this._queuedActions.splice(0, 1)[0];
         next();
+        return true;
     }
+    return false;
+}
 
-    function update() {
-        if (updateChild() || $gameMessage.isBusy()) {
-            return;
+//----------------------------------------------------
+// variable syncing for automatically synced variables
+
+LWP_InkManager.syncVariablesToRmmv = function(story) {
+    for (let inkVariable of Object.keys(this.variableBindings)) {
+        $gameVariables.setValue(this.variableBindings[inkVariable], story.variablesState[inkVariable]);
+    }
+    for (let inkVariable of Object.keys(this.switchBindings)) {
+        $gameSwitches.setValue(this.switchBindings[inkVariable], story.variablesState[inkVariable]);
+    }
+}
+
+LWP_InkManager.syncVariablesToInk = function(story) {
+    for (let inkVariable of Object.keys(this.variableBindings)) {
+        story.variablesState[inkVariable] = $gameVariables.value(this.variableBindings[inkVariable]);
+    }
+    for (let inkVariable of Object.keys(this.switchBindings)) {
+        story.variablesState[inkVariable] = $gameSwitches.value(this.switchBindings[inkVariable]);
+    }
+}
+
+//----------------------------------------------------
+// core output: content and choices
+
+LWP_InkManager.showContentInMessageBox = function(content, displayData) {
+    $gameMessage.setFaceImage(displayData.face, displayData.faceIndex);
+    $gameMessage.setBackground(displayData.background);
+    $gameMessage.setPositionType(displayData.position);
+    if ($gameMessage.addText) {
+        // YEP_MessageCore support - this will use word wrapping if enabled
+        $gameMessage.addText(content);
+    } else {
+        $gameMessage.add(content);
+    }
+}
+
+LWP_InkManager.checkFaceTag = function(tag) {
+    const validFaceNames = listInPath('img/faces', 'png');
+    faceTagCandidate = tag.split(',');
+    if (validFaceNames.indexOf(faceTagCandidate[0]) !== -1) {
+        let face = faceTagCandidate[0];
+        let faceIndex = 0;
+        if (faceTagCandidate.length > 1) {
+            faceIndex = Number.parseInt(faceTagCandidate[1]);
         }
-        if (_queuedActions.length > 0) {
-            dequeue();
-        } else if (active) {
-            const story = getStory();
-            syncVariablesToInk(story);
-            let canShowChoices = true;
-            if (story.canContinue) {
-                const content = story.Continue();
-                syncVariablesToRmmv(story);
-                const tags = story.currentTags;
-                showContent(content, tags);
-                canShowChoices = processTags(tags);
-            }
-            if(canShowChoices && !story.canContinue && story.currentChoices.length > 0) {
-                const choices = story.currentChoices;
-                const choicesText = choices.map( choice => choice.text );
-                showChoices(choicesText, selection => {
-                    getStory().ChooseChoiceIndex(selection);
-                });
-            }
-            if (!story.canContinue && story.currentChoices.length === 0) {
-                stop();
-            }
+        return {face: face, faceIndex: faceIndex};
+    }
+    return null;
+}
+
+// this method only parses hashtags that directly affect displayed
+// content. See processActionHashtags for hashtags that cause other
+// effects. The general rule is that this method should have no side
+// effects - it should only return an object that will later be
+// passed to LWP_InkManager.showContentInMessageBox so the content
+// can be displayed appropriately.
+LWP_InkManager.parseDisplayHashtags = function(tags) {
+    const displayData = {
+        face: '',
+        faceIndex: 0,
+        position: 2,
+        background: 0
+    };
+    for (let tag of tags) {
+        faceTagData = this.checkFaceTag(tag);
+        if (faceTagData) {
+            displayData.face = faceTagData.face;
+            displayData.faceIndex = faceTagData.faceIndex;
+        } else if (/top/i.test(tag)) {
+            displayData.position = 0;
+        } else if (/middle/i.test(tag)) {
+            displayData.position = 1;
+        } else if (/bottom/i.test(tag)) {
+            displayData.position = 2;
+        } else if (/window/i.test(tag)) {
+            displayData.background = 0;
+        } else if (/dim/i.test(tag)) {
+            displayData.background = 1;
+        } else if (/transparent/i.test(tag)) {
+            displayData.background = 2;
         }
     }
+    return displayData;
+}
 
-//////////////////////////////////////////////////////////////////
-// hashtag processing
-//////////////////////////////////////////////////////////////////
+LWP_InkManager.showContent = function(content, tags) {
+    // TODO: word wrapping, buffering leftover text for next time
+    const displayData = this.parseDisplayHashtags(tags);
+    this.showContentInMessageBox(content, displayData);
+}
 
-    function matchCommand(tag, command) {
-        return tag.startsWith(command + '(')
+LWP_InkManager.showChoices = function(choices, callback) {
+    // TODO: error on choices that are too long?
+    $gameMessage.setChoices(choices, 0 /*defaultType*/, -1 /*cancelType*/);
+    $gameMessage.setChoiceBackground(0);
+    $gameMessage.setChoicePositionType(2);
+    $gameMessage.setChoiceCallback(callback);
+}
+
+//----------------------------------------------------
+// update
+
+LWP_InkManager.update = function() {
+    if (this.updateChild() || $gameMessage.isBusy()) {
+        return;
     }
+    if (!this.dequeueAndRunAction() && this.active) {
+        const story = this.getStory();
+        const tags = this.advanceStory(story);
+        const canShowChoices = this.processActionHashtags(tags);
+        if(canShowChoices) {
+            this.checkChoices(story);
+        }
+        if (!story.canContinue && story.currentChoices.length === 0) {
+            this.stop();
+        }
+    }
+}
 
-    function getCommandParams(tag) {
-        let paramStart = tag.indexOf('(') + 1;
-        let paramEnd = tag.indexOf(')', paramStart);
-        if (paramEnd === -1) return [];
-        let parameterText = tag.substring(paramStart, paramEnd);
-        return parameterText.split(/,/).map(x => {
-            let trimmed = x.trim();
-            if (trimmed.length === 0) return null;
-            else return trimmed;
+LWP_InkManager.advanceStory = function(story) {
+    if (story.canContinue) {
+        this.syncVariablesToInk(story);
+        const content = story.Continue();
+        this.syncVariablesToRmmv(story);
+        const tags = story.currentTags;
+        this.showContent(content, tags);
+        return tags;
+    }
+    return [];
+}
+
+LWP_InkManager.checkChoices = function(story) {
+    if(!story.canContinue && story.currentChoices.length > 0) {
+        const choices = story.currentChoices;
+        const choicesText = choices.map( choice => choice.text );
+        this.showChoices(choicesText, selection => {
+            this.getStory().ChooseChoiceIndex(selection);
         });
     }
+}
 
-    function processTags(tags) {
-        canShowChoices = true;
-        for (tag of tags) {
-            if (tag === 'interrupt') {
-                stop();
-            } else if (matchCommand(tag, 'common_event')) {
-                let params = getCommandParams(tag);
-                runCommonEvent(Number.parseInt(params[0]));
-                canShowChoices = false;
-            } else if (matchCommand(tag, 'battle')) {
-                let params = getCommandParams(tag);
-                console.log("starting battle with params:", params);
-                enqueue(() => {
-                    startBattle(
-                        Number.parseInt(params[0]),
-                        resolvePath(params[1]),
-                        resolvePath(params[2]),
-                        resolvePath(params[3])
-                    );
-                });
-                stop();
-                canShowChoices = false;
-            }
+//----------------------------------------------------
+// non-display hashtag processing
+
+LWP_InkManager.matchHashtagCommand = function(tag, command) {
+    return tag.startsWith(command + '(')
+}
+
+LWP_InkManager.getHashtagCommandParams = function(tag) {
+    let paramStart = tag.indexOf('(') + 1;
+    let paramEnd = tag.indexOf(')', paramStart);
+    if (paramEnd === -1) return [];
+    let parameterText = tag.substring(paramStart, paramEnd);
+    return parameterText.split(/,/).map(x => {
+        let trimmed = x.trim();
+        if (trimmed.length === 0) return null;
+        else return trimmed;
+    });
+}
+
+// return true if choices can be shown this tick, false if something
+// else is going on and the choices (if any) should be shown when
+// the engine is next free
+LWP_InkManager.processActionHashtag = function(tag) {
+    if (tag === 'interrupt') {
+        this.stop();
+    } else if (this.matchHashtagCommand(tag, 'common_event')) {
+        let params = this.getHashtagCommandParams(tag);
+        this.runCommonEvent(Number.parseInt(params[0]));
+        canShowChoices = false;
+    } else if (this.matchHashtagCommand(tag, 'battle')) {
+        let params = this.getHashtagCommandParams(tag);
+        this.enqueueAction(() => {
+            this.startBattle(
+                Number.parseInt(params[0]),
+                this.resolvePath(params[1]),
+                this.resolvePath(params[2]),
+                this.resolvePath(params[3])
+            );
+        });
+        this.stop();
+        return false;
+    }
+    return true;
+}
+
+LWP_InkManager.processActionHashtags = function(tags) {
+    let canShowChoices = true;
+    for (tag of tags) {
+        canShowChoices = canShowChoices && this.processActionHashtag(tag);
+    }
+    return canShowChoices;
+}
+
+//----------------------------------------------------
+// embedded interpreter for running common events
+
+LWP_InkManager.updateChild = function() {
+    if (this._childInterpreter) {
+        this._childInterpreter.update();
+        if (this._childInterpreter.isRunning()) {
+            return true;
+        } else {
+            this._childInterpreter = null;
         }
-        return canShowChoices;
     }
+    return false;
+};
 
-    // Takes what might be a partial path (stitch only), and returns a fully qualified
-    // path including the knot. If the path is already qualified, returns it as-is; if
-    // the path is already the name of a knot, also returns it as-is. If neither of
-    // those conditions are true, prepends the current knot to the path.
-    // This does not guarantee that the result is a valid path; Ink provides no mechanism
-    // to list paths, and the only way to validate it is by attempting to use it, which
-    // we might not want to do yet.
-    function resolvePath(path) {
-        if (path === null || path === undefined) return path;
-        // already fully qualified
-        if (path.indexOf('.') !== -1) return path;
-        const story = getStory();
-        // the name of a knot - doesn't need further qualification
-        if (story.KnotContainerWithName(path)) return path;
-        // getting the current knot is *really* hacky
-        const previousPath = story.state.callStack.currentThread.previousPointer.path.toString();
-        const dotIndex = previousPath.indexOf('.');
-        const currentKnot = dotIndex === -1 ? previousPath : previousPath.substring(0, dotIndex);
-        return currentKnot + '.' + path;
+LWP_InkManager.runCommonEvent = function(event) {
+    const list = $dataCommonEvents[event].list
+    this._childInterpreter = new Game_Interpreter(1);
+    this._childInterpreter.setup(list, 0);
+}
+
+//----------------------------------------------------
+// battle
+
+LWP_InkManager.startBattle = function(troopId, winTarget, escapeTarget, loseTarget) {
+    // this is a copy of the code for starting a battle in Game_Interpreter.prototype.command301
+    if (!$gameParty.inBattle()) {
+        troopId = troopId || $gamePlayer.makeEncounterTroopId();
+        if ($dataTroops[troopId]) {
+            BattleManager.setup(troopId, !!escapeTarget, !!loseTarget);
+            BattleManager.setEventCallback(result => {
+                if (result === 0 && winTarget) {
+                    // success
+                    this.go(winTarget);
+                } else if (result === 1 && escapeTarget) {
+                    // escape/abort
+                    this.go(escapeTarget);
+                } else if (result === 2 && loseTarget) {
+                    // defeat
+                    this.go(loseTarget);
+                }
+            });
+            $gamePlayer.makeEncounterCount();
+            SceneManager.push(Scene_Battle);
+        }
     }
+}
 
 //////////////////////////////////////////////////////////////////
 // Game_Map - hooking into the update cycle
 //////////////////////////////////////////////////////////////////
 
-    const Game_MapUpdateEvents = Game_Map.prototype.updateEvents;
-    Game_Map.prototype.updateEvents = function() {
-        Game_MapUpdateEvents.call(this);
-        update();
-    }
+const Game_MapUpdateEvents = Game_Map.prototype.updateEvents;
+Game_Map.prototype.updateEvents = function() {
+    Game_MapUpdateEvents.call(this);
+    LWP_InkManager.update();
+}
 
 //////////////////////////////////////////////////////////////////
 // BattleManager - hooking into the update cycle
 //////////////////////////////////////////////////////////////////
 
-    const oldBattleManagerUpdateEventMain = BattleManager.updateEventMain;
-    BattleManager.updateEventMain = function() {
-        let isBusy = oldBattleManagerUpdateEventMain.call(this);
-        if (!isBusy) {
-            update();
-            return isActive();
-        } else {
-            return isBusy;
-        }
+const oldBattleManagerUpdateEventMain = BattleManager.updateEventMain;
+BattleManager.updateEventMain = function() {
+    let isBusy = oldBattleManagerUpdateEventMain.call(this);
+    if (!isBusy) {
+        LWP_InkManager.update();
+        return LWP_InkManager.isActive();
+    } else {
+        return isBusy;
     }
+}
 
 //////////////////////////////////////////////////////////////////
 // Game_Interpreter - handling the plugin command that starts everything
 //////////////////////////////////////////////////////////////////
 
-    const oldGame_InterpreterPluginCommand = Game_Interpreter.prototype.pluginCommand;
-	Game_Interpreter.prototype.pluginCommand = function(command, args) {
-		if (/ink/i.test(command)) {
-            const target = args[0];
-            if (target) {
-                setInkKnot(target);
-            }
-            go();
-			return;
-		};
-		oldGame_InterpreterPluginCommand.call(this, command, args);
-	};
+const oldGame_InterpreterPluginCommand = Game_Interpreter.prototype.pluginCommand;
+Game_Interpreter.prototype.pluginCommand = function(command, args) {
+    if (/ink/i.test(command)) {
+        const target = args[0];
+        LWP_InkManager.go(target);
+        return;
+    };
+    oldGame_InterpreterPluginCommand.call(this, command, args);
+};
+
+//////////////////////////////////////////////////////////////////
+// DataManager
+// for hooking into save/load
+//////////////////////////////////////////////////////////////////
+const oldDataManagerMakeSaveContents = DataManager.makeSaveContents;
+DataManager.makeSaveContents = function() {
+    let contents = oldDataManagerMakeSaveContents.call(this);
+    contents.LWP_Ink = LWP_InkManager.makeSaveContents();
+    return contents;
+}
+
+const oldDataManagerExtractSaveContents = DataManager.extractSaveContents;
+DataManager.extractSaveContents = function(contents) {
+    oldDataManagerExtractSaveContents.call(this, contents);
+    LWP_InkManager.extractSaveContents(contents.LWP_Ink);
+}
 
 
 //////////////////////////////////////////////////////////////////
-// filesystem - utility functions
+// filesystem - utility functions. Not exposed externally.
 //////////////////////////////////////////////////////////////////
 
-    function getExtension(filename) {
-        const dot = filename.lastIndexOf('.');
-        if (dot === -1) return '';
-        return filename.substring(dot + 1, filename.length);
+function getExtension(filename) {
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1) return '';
+    return filename.substring(dot + 1, filename.length);
+}
+
+function arrayify(maybeAnArrayOrMaybeNot) {
+    if (Array.isArray(maybeAnArrayOrMaybeNot)) {
+        return maybeAnArrayOrMaybeNot;
+    } else {
+        return [maybeAnArrayOrMaybeNot];
     }
+}
 
-    function arrayify(maybeAnArrayOrMaybeNot) {
-        if (Array.isArray(maybeAnArrayOrMaybeNot)) {
-            return maybeAnArrayOrMaybeNot;
+const _listInPath_cache = {};
+function listInPath(dir, allowedFileTypes) {
+    allowedFileTypes = arrayify(allowedFileTypes);
+    const key = dir + ':' + allowedFileTypes.join(',');
+    let cachedValue = _listInPath_cache[key];
+    if (cachedValue === undefined) {
+        allowedFileTypes = allowedFileTypes.map( x => x.toLowerCase() );
+        const fs = require('fs');
+        const path = require('path');
+        const base = path.dirname(process.mainModule.filename);
+        const fullpath = path.join(base, dir);
+        const entries = fs.readdirSync(fullpath);
+        if (allowedFileTypes) {
+            cachedValue = entries
+                .filter( filename => allowedFileTypes.indexOf(getExtension(filename).toLowerCase()) !== -1)
+                .map( filename => filename.substring(0, filename.lastIndexOf('.')));
         } else {
-            return [maybeAnArrayOrMaybeNot];
+            cachedValue = entries;
         }
+        _listInPath_cache[key] = cachedValue;
     }
-
-    const _listInPath_cache = {};
-    function listInPath(dir, allowedFileTypes) {
-        allowedFileTypes = arrayify(allowedFileTypes);
-        const key = dir + ':' + allowedFileTypes.join(',');
-        let cachedValue = _listInPath_cache[key];
-        if (cachedValue === undefined) {
-            allowedFileTypes = allowedFileTypes.map( x => x.toLowerCase() );
-            const fs = require('fs');
-            const path = require('path');
-            const base = path.dirname(process.mainModule.filename);
-            const fullpath = path.join(base, dir);
-            const entries = fs.readdirSync(fullpath);
-            if (allowedFileTypes) {
-                cachedValue = entries
-                    .filter( filename => allowedFileTypes.indexOf(getExtension(filename).toLowerCase()) !== -1)
-                    .map( filename => filename.substring(0, filename.lastIndexOf('.')));
-            } else {
-                cachedValue = entries;
-            }
-            _listInPath_cache[key] = cachedValue;
-        }
-        return cachedValue;
-    }
+    return cachedValue;
+}
 
 })();
