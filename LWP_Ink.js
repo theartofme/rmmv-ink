@@ -472,7 +472,9 @@ LWP_InkManager.advanceStory = function(story) {
         const content = story.Continue();
         this.syncVariablesToRmmv(story);
         const tags = story.currentTags;
-        this.showContent(content, tags);
+        if (!content.match(/^\s*$/)) {
+            this.showContent(content, tags);
+        }
         return tags;
     }
     return [];
@@ -623,10 +625,19 @@ Game_Interpreter.prototype.pluginCommand = function(command, args) {
     if (/ink/i.test(command)) {
         const target = args[0];
         LWP_InkManager.go(target);
+        this.setWaitMode('ink');
         return;
     };
     oldGame_InterpreterPluginCommand.call(this, command, args);
 };
+
+const oldGame_InterpreterUpdateWaitMode = Game_Interpreter.prototype.updateWaitMode;
+Game_Interpreter.prototype.updateWaitMode = function() {
+    if (this._waitMode === 'ink' && LWP_InkManager.isActive()) {
+        return true;
+    }
+    return oldGame_InterpreterUpdateWaitMode.call(this);
+}
 
 //////////////////////////////////////////////////////////////////
 // DataManager
