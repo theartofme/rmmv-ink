@@ -2,13 +2,19 @@
  * @plugindesc Integrates the Ink story scripting language (https://www.inklestudios.com/ink/) into RPG Maker.
  * @author Logan Pickup
  * 
+ * @param ink_script
+ * @text Ink Script
+ * @desc Name of the Ink script. Must be exported with the "export to JSON" option, and must be in the data folder.
+ * @type text
+ * @default inkscript.ink.json
+ * 
  * @help 
 
 Integrates the [Ink](https://www.inklestudios.com/ink/) scripting language into RPG Maker MV. Provides plugin
 commands for triggering Ink, allows sharing variables between Ink and RMMV, and provides some extension
 functions and hashtags that allow more control over RMMV from within Ink.
 
-## Quick Start
+## Getting Started
 
 ### Installation
 
@@ -187,7 +193,35 @@ The following hashtags can be used:
 	cannot be escaped from or will end in game over if the battle is lost, respectively. For example,
 	to prevent escape but prevent a game over: `#battle(0,win,,lose)`
 
+
+## Localisation
+This plugin supports both IAVRA.MasterLocalization and DKTools_Localization. It can go above or below
+either of those two scripts, it's not important. It will use the currently-set language from whichever
+localisation plugin you have installed to load a localised version of the Ink script. If your Ink script
+is normally "data/script.ink.json" then the localised version should be named "data/script.ink-es.json".
+The text in the "languages" list for the IAVRA.MasterLocalization plugin will be used if it is active,
+which is normally a short language code. The text in the "Short language name", also known as "Locale",
+in the DKTools_Localization plugin will be used if it is active.
+
+It supports changing languages part-way through the game.
+
+Note that there's no need to add anything to either plugin's JSON files; the Ink script itself should be
+fully translated instead and exported. This should make it convenient to hand off to a translator,
+since you can just give them the Ink script instead of trying to extract all the strings from
+RPG Maker.
+
+IMPORTANT: When translating, the structure of the Ink script must stay exactly
+the same, including the names of variables, knots and stitches, and number and location of choices
+(including choice labels if they are used). If the structure is different, switching languages mid-
+game will not work, and loading savegames from a different language will also not work.
+
+If this can't be avoided, you must not allow the player to change languages after the game starts.
+This includes changing language then loading a saved game from a different language!
+
  */
+var Imported = Imported || {};
+Imported.LWP_Ink = true;
+
 (function () {
 
 //////////////////////////////////////////////////////////////////
@@ -204,33 +238,61 @@ LWP_InkManager = function() {
 //----------------------------------------------------
 // init
 
+let parameters = PluginManager.parameters("LWP_Ink")
+
 LWP_InkManager._inkStory = null;    // only accessed directly by LWP_InkManager.getStory()
-LWP_InkManager.inkStoryFilename = "data/inkscript.ink.json";
+LWP_InkManager.inkStoryFolder = "data/";
+LWP_InkManager.inkStoryFilenameOnly = (parameters['ink_script'] || "inkscript.ink.json").trim();
+LWP_InkManager.inkStoryFilename = LWP_InkManager.inkStoryFolder + LWP_InkManager.inkStoryFilenameOnly;
 LWP_InkManager.active = false;
 LWP_InkManager.variableBindings = {};
 LWP_InkManager.switchBindings = {};
 LWP_InkManager._queuedActions = [];
 LWP_InkManager._childInterpreter = null;
+LWP_InkManager._currentLocalisationTag = "";
+
+LWP_InkManager.getLocalisationTag = function() {
+    if (Imported.DKTools_Localization) {
+        //return DKTools.Localization.language;
+        return DKTools.Localization.locale;
+    } else if (Imported.IAVRA_MasterLocalization) {
+        return IAVRA.MasterLocalization.I18N.language;
+    }
+    return "";
+
+}
 
 LWP_InkManager.getStory = function() {
-    if (!this._inkStory) {
-        this._inkStory = this.loadInkStory(this.inkStoryFilename);
+    let currentLocalisationTag = this.getLocalisationTag();
+    if (!this._inkStory || currentLocalisationTag != this._currentLocalisationTag) {
+        this._currentLocalisationTag = currentLocalisationTag;
+        const saveData = this._inkStory ? this._inkStory.state.ToJson() : null;
+        this._inkStory = this.loadInkStory(this.inkStoryFilename, currentLocalisationTag);
         this.bindFunctions(this._inkStory);
+        if (saveData) {
+            // preserve the current story state when switching languages
+            this._inkStory.state.LoadJson(saveData);
+        }
     }
     return this._inkStory;
 }
 
-LWP_InkManager.loadInkData = function(filename) {
+LWP_InkManager.loadInkData = function(filename, localisationTag) {
     const fs = require('fs');
     const path = require('path');
     const base = path.dirname(process.mainModule.filename);
     const pathname = path.join(base, filename);
-    return fs.readFileSync(pathname, { encoding: 'utf8' }).replace(/^\uFEFF/, ''); //strips the BOM
+    const withoutSuffix = pathname.substring(0, pathname.lastIndexOf('.'));
+    const suffix = pathname.substring(pathname.lastIndexOf('.'));
+    const localisedSuffix = localisationTag === "" ? "" : ("-" + localisationTag);
+    const localisedFilename = withoutSuffix + localisedSuffix + suffix;
+    // TODO: handle a file not exists error and fall back to the default filename
+    return fs.readFileSync(localisedFilename, { encoding: 'utf8' }).replace(/^\uFEFF/, ''); //strips the BOM
 }
 
-LWP_InkManager.loadInkStory = function(filename) {
+LWP_InkManager.loadInkStory = function(filename, localisationTag) {
     const Story = inkjs.Story;
-    return new Story(this.loadInkData(filename));
+    return new Story(this.loadInkData(filename, localisationTag));
 }
 
 //----------------------------------------------------
