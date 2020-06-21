@@ -129,6 +129,44 @@ see the section on hashtags below.
      Starts Ink at the specified knot (You can use "." to specify a stitch, too) instead of where
      it left off or where it would normally start.
 
+### Using Ink in other places
+
+Ink can be called to supply text for other places too - anywhere that RMMV escape codes will work. This
+includes:
+* character profiles
+* item descriptions
+* state messages
+
+It does not include:
+* character names
+* item names
+* monster names
+* terms
+
+If you are using a plugin that changes where escape codes work, this may, depending on the plugin,
+also change where Ink is able to be called from too.
+
+In order to use this functionality, just use the code {ink:knot.stitch} to include the text from
+the specified knot/stitch. For example, if you have the following in an Ink script:
+
+```
+== main_character ==
+= bio
+A simple farm girl, everything changed when she discovered she was the chosen one!
+```
+
+Then you can show this by entering {ink:main_character.bio} in the "Profile" section of a
+character in the RPG Maker database.
+
+Ink content included this way is different from Ink content from the plugin command:
+* It never changes state. In order to stop other parts of this script from breaking, any
+  changes to state are undone. This includes any changes to what is considered the current
+  location in the text, as well as the "seen" counters on knots and stitches. There is a
+  known bug related to this that will cause changes to be synced to RPG Maker *before*
+  the state change is undone, so please don't change any synced variables.
+* Choices have no effect. Choices will not be shown and only text from before the choice
+  will be seen.
+
 ### External Functions
 The following external functions are available in Ink. They need to be defined
 at the top of one of your ink files using the syntax shown.
@@ -528,13 +566,18 @@ LWP_InkManager.update = function() {
     }
 }
 
+LWP_InkManager.getNextContent = function(story) {
+    this.syncVariablesToInk(story);
+    const content = story.Continue();
+    this.syncVariablesToRmmv(story);
+    return content.trim();
+}
+
 LWP_InkManager.advanceStory = function(story) {
     if (story.canContinue) {
-        this.syncVariablesToInk(story);
-        const content = story.Continue();
-        this.syncVariablesToRmmv(story);
+        const content = this.getNextContent(story);
         const tags = story.currentTags;
-        if (!content.match(/^\s*$/)) {
+        if (content != "") {
             this.showContent(content, tags);
         }
         return tags;
@@ -718,6 +761,40 @@ DataManager.extractSaveContents = function(contents) {
     LWP_InkManager.extractSaveContents(contents.LWP_Ink);
 }
 
+//////////////////////////////////////////////////////////////////
+// Window_Base - allowing Ink to be called to supply text
+// anywhere. In theory this includes output from Ink itself that
+// is showing in a message window, but please don't do that! It
+// may work, but it is not supported. It is intended for item
+// names and descriptions, etc.
+// It also does not support choices - if it finds a choice, it
+// won't show it, only the text preceeding it.
+// Ink shown this way also won't change state - it won't update
+// "seen" counts, and it won't make any other changes to the Ink
+// state. This is another reason why it shouldn't be used for
+// message bog messages!
+//////////////////////////////////////////////////////////////////
+
+const oldWindow_Base_convertEscapeCharacters =
+    Window_Base.prototype.convertEscapeCharacters;
+const inkAnywhereRegex = /\{ink:([^}]+)\}/ig;
+Window_Base.prototype.convertEscapeCharacters = function(text) {
+    text = oldWindow_Base_convertEscapeCharacters.call(this, text);
+    let savedData = null;
+    const story = () => {
+        const _story = LWP_InkManager.getStory();
+        savedData = _story ? _story.state.ToJson() : null;
+        return _story;
+    };
+    text = text.replace(inkAnywhereRegex, (match, inkAddress) => {
+        LWP_InkManager.setInkPath(inkAddress);
+        return LWP_InkManager.getNextContent(story());
+    });
+    if (savedData) {
+        LWP_InkManager.getStory().state.LoadJson(savedData);
+    }
+    return text;
+};
 
 //////////////////////////////////////////////////////////////////
 // filesystem - utility functions. Not exposed externally.
@@ -739,6 +816,11 @@ function arrayify(maybeAnArrayOrMaybeNot) {
 
 const _listInPath_cache = {};
 function listInPath(dir, allowedFileTypes) {
+    // TODO: 'fs' is not allowed in web deployments, which mobile uses, and there are no APIs
+    // available to do a directory listing. The accepted method is to build a cache of available
+    // files when run in test mode in the RMMV editor, and save that to a data file, and scan
+    // that file instead of the actual directory.
+    // Since this is only used for detecting face images, this could be made relatively simply.
     allowedFileTypes = arrayify(allowedFileTypes);
     const key = dir + ':' + allowedFileTypes.join(',');
     let cachedValue = _listInPath_cache[key];
