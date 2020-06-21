@@ -1,8 +1,9 @@
-Integrates the [Ink](https://www.inklestudios.com/ink/) scripting language into RPG Maker MV. Provides plugin
+
+Integrates the Ink (https://www.inklestudios.com/ink/) scripting language into RPG Maker MV. Provides plugin
 commands for triggering Ink, allows sharing variables between Ink and RMMV, and provides some extension
 functions and hashtags that allow more control over RMMV from within Ink.
 
-## Quick Start
+## Getting Started
 
 ### Installation
 
@@ -13,9 +14,8 @@ folder (`js/plugins`). Download `LWP_Ink.js` from this repo and put it in your R
 Add both `ink.js` and `LWP_Ink.js` to your plugins in RMMV. `ink.js` *must* be higher in the list than
 `LWP_Ink.js`; drag them around to make sure this is the case if it's not already.
 
-It's also highly recommended to use the [YEP_MessageCore](http://www.yanfly.moe/wiki/Message_Core_(YEP))
-plugin to handle word wrapping. This plugin has only been tested with YEP_MessageCore; if you need it to work
-with a different word wrapping plugin let me know.
+It's also highly recommended to use the YEP_MessageCore (http://www.yanfly.moe/wiki/Message_Core_(YEP)
+plugin to handle word wrapping. This plugin has only been tested with YEP_MessageCore; if you need it to work with a different word wrapping plugin let me know.
 
 ### Usage
 
@@ -117,6 +117,44 @@ see the section on hashtags below.
      Starts Ink at the specified knot (You can use "." to specify a stitch, too) instead of where
      it left off or where it would normally start.
 
+### Using Ink in other places
+
+Ink can be called to supply text for other places too - anywhere that RMMV escape codes will work. This
+includes:
+* character profiles
+* item descriptions
+* state messages
+
+It does not include:
+* character names
+* item names
+* monster names
+* terms
+
+If you are using a plugin that changes where escape codes work, this may, depending on the plugin,
+also change where Ink is able to be called from too.
+
+In order to use this functionality, just use the code {ink:knot.stitch} to include the text from
+the specified knot/stitch. For example, if you have the following in an Ink script:
+
+```
+== main_character ==
+= bio
+A simple farm girl, everything changed when she discovered she was the chosen one!
+```
+
+Then you can show this by entering {ink:main_character.bio} in the "Profile" section of a
+character in the RPG Maker database.
+
+Ink content included this way is different from Ink content from the plugin command:
+* It never changes state. In order to stop other parts of this script from breaking, any
+  changes to state are undone. This includes any changes to what is considered the current
+  location in the text, as well as the "seen" counters on knots and stitches. There is a
+  known bug related to this that will cause changes to be synced to RPG Maker *before*
+  the state change is undone, so please don't change any synced variables.
+* Choices have no effect. Choices will not be shown and only text from before the choice
+  will be seen.
+
 ### External Functions
 The following external functions are available in Ink. They need to be defined
 at the top of one of your ink files using the syntax shown.
@@ -180,3 +218,27 @@ The following hashtags can be used:
 	Any parameter can be omitted, and if `escapeTarget` ot `loseTarget` are omitted then the battle
 	cannot be escaped from or will end in game over if the battle is lost, respectively. For example,
 	to prevent escape but prevent a game over: `#battle(0,win,,lose)`
+
+## Localisation
+This plugin supports both IAVRA.MasterLocalization and DKTools_Localization. It can go above or below
+either of those two scripts, it's not important. It will use the currently-set language from whichever
+localisation plugin you have installed to load a localised version of the Ink script. If your Ink script
+is normally "data/script.ink.json" then the localised version should be named "data/script.ink-es.json".
+The text in the "languages" list for the IAVRA.MasterLocalization plugin will be used if it is active,
+which is normally a short language code. The text in the "Short language name", also known as "Locale",
+in the DKTools_Localization plugin will be used if it is active.
+
+It supports changing languages part-way through the game.
+
+Note that there's no need to add anything to either plugin's JSON files; the Ink script itself should be
+fully translated instead and exported. This should make it convenient to hand off to a translator,
+since you can just give them the Ink script instead of trying to extract all the strings from
+RPG Maker.
+
+IMPORTANT: When translating, the structure of the Ink script must stay exactly
+the same, including the names of variables, knots and stitches, and number and location of choices
+(including choice labels if they are used). If the structure is different, switching languages mid-
+game will not work, and loading savegames from a different language will also not work.
+
+If this can't be avoided, you must not allow the player to change languages after the game starts.
+This includes changing language then loading a saved game from a different language!
