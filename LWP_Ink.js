@@ -9,8 +9,6 @@
  * @default inkscript.ink.json
  * 
  * @help 
- * Annoying trying to read this help in the tiny RPG Maker MV box?
- * View it online here: https://github.com/theartofme/rmmv-ink/blob/master/README.md
 
 Integrates the Ink (https://www.inklestudios.com/ink/) scripting language into RPG Maker MV. Provides plugin commands for triggering Ink, allows sharing variables between Ink and RMMV, and provides some extension functions and hashtags that allow more control over RMMV from within Ink.
 
@@ -172,6 +170,7 @@ LWP_InkManager.inkStoryFolder = "data/";
 LWP_InkManager.inkStoryFilenameOnly = (parameters['ink_script'] || "inkscript.ink.json").trim();
 LWP_InkManager.inkStoryFilename = LWP_InkManager.inkStoryFolder + LWP_InkManager.inkStoryFilenameOnly;
 LWP_InkManager.active = false;
+LWP_InkManager.stopAfterMessage = false;
 LWP_InkManager.variableBindings = {};
 LWP_InkManager.switchBindings = {};
 LWP_InkManager._queuedActions = [];
@@ -283,7 +282,7 @@ LWP_InkManager.go = function(optionalPath) {
 }
 
 LWP_InkManager.stop = function() {
-    this.active = false;
+    this.stopAfterMessage = true;
 }
 
 LWP_InkManager.isActive = function() {
@@ -452,6 +451,9 @@ LWP_InkManager.update = function() {
         if (!story.canContinue && story.currentChoices.length === 0) {
             this.stop();
         }
+        if (this.stopAfterMessage && !$gameMessage.hasText()) {
+            this.active = false;
+        }
     }
 }
 
@@ -511,8 +513,10 @@ LWP_InkManager.processActionHashtag = function(tag) {
         this.stop();
     } else if (this.matchHashtagCommand(tag, 'common_event')) {
         let params = this.getHashtagCommandParams(tag);
-        this.runCommonEvent(Number.parseInt(params[0]));
-        canShowChoices = false;
+        let commonEventIndex = Number.parseInt(params[0]);
+        console.log("LWP_Ink running common event " + commonEventIndex);
+        this.runCommonEvent(commonEventIndex);
+        return false;
     } else if (this.matchHashtagCommand(tag, 'battle')) {
         let params = this.getHashtagCommandParams(tag);
         this.enqueueAction(() => {
