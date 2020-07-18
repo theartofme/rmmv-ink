@@ -12,7 +12,31 @@
  * @text Enable formatting
  * @desc Turn this on to enable basic formatting. Currently the only thing it does is convert _text_ to \C[1]text\C, so emphasis looks more natural in the script.
  * @type boolean
- * @default false
+ * @default true
+ * 
+ * @param emphasis_colour
+ * @text Emphasis colour
+ * @desc If "Enable formatting" is turned on, this controls the colour used for _emphasis_. It can be any colour allowed for the \C[] escape.
+ * @type number
+ * @default 1
+ * 
+ * @param use_yep_name_box
+ * @text Use YEP_MessageCore name boxes
+ * @desc Turn this on to enable using YEP_MessageCore name boxes when the name is known, e.g. if the name was set using cast_link() or cast() and the name was used as a hashtag.
+ * @type boolean
+ * @default true
+ * 
+ * @param yep_name_box_location
+ * @text YEP_MessageCore name box location
+ * @desc Whether to put the name box at the left, centre, or right.
+ * @type select
+ * @option Left
+ * @value n
+ * @option Centre
+ * @value nc
+ * @option Right
+ * @value nr
+ * @default n
  * 
  * @help 
 
@@ -121,6 +145,10 @@ The following external functions are available in Ink. They need to be defined a
 	EXTERNAL link_switch(ref varname, x) Links the variable varname to the RMMV switch x. The values will be automatically synced when going from/to Ink. Also, this will set the current value of varname to the RMMV switch it is linked to immediately.
 	EXTERNAL rmmv_var(x) Retrives the value of RMMV variable x.
 	EXTERNAL rmmv_switch(x) Retrives the value of RMMV switch x.
+	EXTERNAL link_actor_name(ref varname, actor_index) Links the name of an Actor to an Ink variable. Unlike link_var and link_switch the RMMV Actor name will be set based on the Ink variable when this is called.
+	EXTERNAL cast(name, image, default_index) Sets up a member of the cast. The name given is associated with an image (should be the filename of an image in img/faces) and a default index in the image. This image is used whenever you use the name as a hashtag.
+	EXTERNAL cast_link(ref name, actor_index, image, default_index) This is a combination of cast() and link_actor(). If you're using both, this will save you some setup! The difference is that the first parameter is a variable, not a string, and it will both link the variable to the actor's name in RMMV and allow the variable's name (not the actor's name, as that can change!) to be used as a hashtag like with cast().
+	EXTERNAL expression(expression_name, index) Sets up an expression, e.g. happy, frustrated, etc. When the expression is used as a hashtag, the same image file will be used but the index within the file will be changed to the specified index.
 
 Hashtags
 
@@ -136,6 +164,22 @@ The following hashtags can be used:
 	#interrupt Stops running Ink after showing the tagged content. Calling the plugin command INK without any parameters will continue from the next piece of content.
 	#common_event(x) Runs the common event x. Control will pass over to the common event until it finishes, after which Ink will resume again. If Ink is called again from the common event then the current Ink knot will be overwritten by the new target, but Ink will still not start running until the common event finishes; this is unintuitive, so it is best to just avoid calling Ink from a common event called by Ink.
 	#battle(troopId,winTarget,escapeTarget,loseTarget) Starts a battle. It is possible to just pass control to a common event and start the battle from there, but this way allows you to jump easily jump to different Ink paths based on the outcome of the battle (it is still possible with a common event by using linked variables). This hashtag also stops Ink running, just like #interrupt - if you want to continue the Ink dialogue during the battle, do the INK plugin command from within the battle itself. troopId is the number of the troop to use for the battle. If set to 0, or not set, the troop is determined randomly using RMMV's normal mechanism. winTarget is the path to go to in Ink if the battle is won. escapeTarget is the path to go to in Ink if the battle is escaped from or aborted. loseTarget is the path to go to in Ink if the battle is lost. winTarget,escapeTarget, and loseTarget can take the same format of paths that Ink can: either a knot, a knot.stitch, or a stitch by itself, provided the stitch is in the current knot and the stitch does not have the same name as a knot. Any parameter can be omitted, and if escapeTarget ot loseTarget are omitted then the battle cannot be escaped from or will end in game over if the battle is lost, respectively. For example, to prevent escape but prevent a game over: #battle(0,win,,lose)
+	#name If the hashtag is the name of a character defined with cast(name, image, index) or cast_link(ref name, image, index) then it will cause that image to be used. Equivalent to using the image name and index directly as a hashtag, but easier to read. Additionally, if the "Use YEP_MessageCore name boxes" option is enabled, then the name will be set in the name box. If the cast_link variant was used to set this up, then the current value of the name variable will be used in the name box.
+	#expression If the hashtag is the name of an expression defined with expression(expression, index) then it will cause the image index to change to the one specified for the expression. The image used will not change.
+
+A full example of using cast() and expression with hashtags:
+
+	VAR PRAXIS = 'Praxis'
+	~ cast('Ingrid', 'Actor1', 0)
+	~ cast_link(PRAXIS, 2, 'Alien3', 0)
+	~ expression('ecstatic', 1)
+	~ expression('inscrutable', 2)
+
+	Hi. #PRAXIS
+
+	OMG you're the new alien! #Ingrid #ecstatic
+
+	I could be. #PRAXIS #inscrutible
 
 Localisation
 
@@ -175,12 +219,17 @@ LWP_InkManager._inkStory = null;    // only accessed directly by LWP_InkManager.
 LWP_InkManager.inkStoryFolder = "data/";
 LWP_InkManager.inkStoryFilenameOnly = (parameters['ink_script'] || "inkscript.ink.json").trim();
 LWP_InkManager.enableFormatting = !!(parameters['enable_formatting'] || false);
+LWP_InkManager.emphasisColour = parameters['emphasis_colour'] || 1;
+LWP_InkManager.useYepNameBox = !!(parameters['use_yep_name_box'] || false);
+LWP_InkManager.yepNameBoxLocation = parameters['yep_name_box_location'] || 'n';
 LWP_InkManager.inkStoryFilename = LWP_InkManager.inkStoryFolder + LWP_InkManager.inkStoryFilenameOnly;
 LWP_InkManager.active = false;
 LWP_InkManager.stopAfterMessage = false;
 LWP_InkManager.variableBindings = {};
 LWP_InkManager.switchBindings = {};
 LWP_InkManager.actorNameBindings = {};
+LWP_InkManager.cast = {};
+LWP_InkManager.expressions = {};
 LWP_InkManager._queuedActions = [];
 LWP_InkManager._childInterpreter = null;
 LWP_InkManager._currentLocalisationTag = "";
@@ -238,26 +287,49 @@ LWP_InkManager.bindFunctions = function(story) {
 	story.BindExternalFunction ("link_actor_name", this.external_LinkActorName);
 	story.BindExternalFunction ("rmmv_var", this.external_rmmvVar);
 	story.BindExternalFunction ("rmmv_switch", this.external_rmmvSwitch);
+	story.BindExternalFunction ("cast", this.external_cast);
+	story.BindExternalFunction ("cast_link", this.external_castLink);
+	story.BindExternalFunction ("expression", this.external_expression);
 }
 
 LWP_InkManager.external_LinkVar = function(variableRef, rmmvVariable) {
-	console.log(variableRef, rmmvVariable);
+	console.log('link_var', variableRef, rmmvVariable);
 	this.variableBindings[variableRef] = rmmvVariable;
 	this.getStory().variablesState[variableRef] = $gameVariables.value(rmmvVariable);
 }.bind(LWP_InkManager);
 
 LWP_InkManager.external_LinkSwitch = function(variableRef, rmmvSwitch) {
-	console.log(variableRef, rmmvSwitch);
+	console.log('link_switch', variableRef, rmmvSwitch);
 	this.switchBindings[variableRef] = rmmvSwitch;
 	this.getStory().variablesState[variableRef] = $gameSwitches.value(rmmvSwitch);
 }.bind(LWP_InkManager);
 
 LWP_InkManager.external_LinkActorName = function(variableRef, rmmvActorIndex) {
-	console.log(variableRef, rmmvActorIndex);
+	console.log('link_actor_name', variableRef, rmmvActorIndex);
 	this.actorNameBindings[variableRef] = rmmvActorIndex;
 	// works the opposite way to linking variables - the RMMV name is overwritten with
 	// the name defined in the story. This is to allow Ink to control localised names.
 	$gameActors.actor(rmmvActorIndex).setName(this.getStory().variablesState[variableRef]);
+}.bind(LWP_InkManager);
+
+LWP_InkManager.addCastEntry = function(name, useVariable, image, index) {
+	this.cast[name] = {useVariable, image, index};
+}
+
+LWP_InkManager.external_cast = function(name, rmmvImageName, defaultImageIndex) {
+	console.log('cast', name, rmmvImageName, defaultImageIndex);
+	this.addCastEntry(name, false, rmmvImageName, defaultImageIndex);
+}.bind(LWP_InkManager);
+
+LWP_InkManager.external_castLink = function(nameRef, rmmvActorIndex, rmmvImageName, defaultImageIndex) {
+	console.log('cast_link', nameRef, rmmvActorIndex, rmmvImageName, defaultImageIndex);
+	this.addCastEntry(nameRef, true, rmmvImageName, defaultImageIndex);
+	this.external_LinkActorName(nameRef, rmmvActorIndex);
+}.bind(LWP_InkManager);
+
+LWP_InkManager.external_expression = function(expression, rmmvImageIndex) {
+	console.log('expression', expression, rmmvImageIndex);
+	this.expressions[expression] = rmmvImageIndex;
 }.bind(LWP_InkManager);
 
 LWP_InkManager.external_rmmvVar = function(variable) {
@@ -277,7 +349,9 @@ LWP_InkManager.makeSaveContents = function() {
 		state: story.state.ToJson(),
 		variables: this.variableBindings,
 		switches: this.switchBindings,
-		actorNames: this.actorNameBindings
+		actorNames: this.actorNameBindings,
+		cast: this.cast,
+		expressions: this.expressions,
 	};
 }
 
@@ -288,6 +362,8 @@ LWP_InkManager.extractSaveContents = function(savedData) {
 	this.variableBindings = savedData.variables;
 	this.switchBindings = savedData.switches;
 	this.this.actorNameBindings = savedData.actorNames;
+	this.this.cast = savedData.accastorNames;
+	this.this.expressions = savedData.expressions;
 }
 
 //----------------------------------------------------
@@ -392,6 +468,11 @@ LWP_InkManager.showContentInMessageBox = function(content, displayData) {
 	$gameMessage.setPositionType(displayData.position);
 	content = LWP_InkManager.formatText(content);
 	if ($gameMessage.addText) {
+		console.log(displayData);
+		if (displayData.nameBox) {
+			content = '\\' + this.yepNameBoxLocation + '<' + displayData.nameBox + '>' + content;
+			console.log('namebox', content);
+		}
 		// YEP_MessageCore support - this will use word wrapping if enabled
 		$gameMessage.addText(content);
 	} else {
@@ -424,13 +505,28 @@ LWP_InkManager.parseDisplayHashtags = function(tags) {
 		face: '',
 		faceIndex: 0,
 		position: 2,
-		background: 0
+		background: 0,
+		nameBox: null
 	};
+	let expressionOverridden = false;
 	for (let tag of tags) {
-		faceTagData = this.checkFaceTag(tag);
-		if (faceTagData) {
-			displayData.face = faceTagData.face;
-			displayData.faceIndex = faceTagData.faceIndex;
+		if (this.cast[tag]) { 
+			console.log('#cast', tag, this.cast[tag]);
+			displayData.face = this.cast[tag].image;
+			if (!expressionOverridden) {
+				displayData.faceIndex = this.cast[tag].index;
+			}
+			if (this.useYepNameBox) {
+				let name = tag;
+				if (this.cast[tag].useVariable) {
+					name = this.getStory().variablesState[name];
+				}
+				displayData.nameBox = name;
+			}
+		} else if (typeof(this.expressions[tag]) !== "undefined") {
+			console.log('#expression', tag, this.expressions[tag]);
+			displayData.faceIndex = this.expressions[tag]
+			expressionOverridden = true;
 		} else if (/top/i.test(tag)) {
 			displayData.position = 0;
 		} else if (/middle/i.test(tag)) {
@@ -443,6 +539,14 @@ LWP_InkManager.parseDisplayHashtags = function(tags) {
 			displayData.background = 1;
 		} else if (/transparent/i.test(tag)) {
 			displayData.background = 2;
+		} else {
+			faceTagData = this.checkFaceTag(tag);
+			if (faceTagData) {
+				displayData.face = faceTagData.face;
+				if (!expressionOverridden) {
+					displayData.faceIndex = faceTagData.faceIndex;
+				}
+			}
 		}
 	}
 	return displayData;
@@ -452,7 +556,7 @@ LWP_InkManager.formatText = function(text)  {
 	console.log("Formatting enabled?", LWP_InkManager.enableFormatting);
 	if (!LWP_InkManager.enableFormatting) return text;
 	return text.replace(/_([^_]+)_/g, (match, group1) => {
-		return '\\C[1]' + group1 + '\\C';
+		return '\\C[' + LWP_InkManager.emphasisColour + ']' + group1 + '\\C';
 	});
 }
 
