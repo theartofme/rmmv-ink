@@ -361,9 +361,9 @@ LWP_InkManager.extractSaveContents = function(savedData) {
 	story.state.LoadJson(savedData.state);
 	this.variableBindings = savedData.variables;
 	this.switchBindings = savedData.switches;
-	this.this.actorNameBindings = savedData.actorNames;
-	this.this.cast = savedData.accastorNames;
-	this.this.expressions = savedData.expressions;
+	this.actorNameBindings = savedData.actorNames;
+	this.cast = savedData.cast;
+	this.expressions = savedData.expressions;
 }
 
 //----------------------------------------------------
@@ -374,9 +374,11 @@ LWP_InkManager.go = function(optionalPath) {
 		this.setInkPath(optionalPath);
 	}
 	this.active = true;
+	this.stopAfterMessage = false;
 }
 
 LWP_InkManager.stop = function() {
+	console.log("INK: stopping");
 	this.stopAfterMessage = true;
 }
 
@@ -424,6 +426,7 @@ LWP_InkManager.enqueueAction = function(action) {
 LWP_InkManager.dequeueAndRunAction = function() {
 	if (this._queuedActions.length > 0) {
 		const next = this._queuedActions.splice(0, 1)[0];
+		console.log("Ink: running queued action", next);
 		next();
 		return true;
 	}
@@ -592,6 +595,7 @@ LWP_InkManager.update = function() {
 			this.stop();
 		}
 		if (this.stopAfterMessage && !$gameMessage.hasText()) {
+			console.log("Ink: deactivating");
 			this.active = false;
 		}
 	}
@@ -605,9 +609,11 @@ LWP_InkManager.getNextContent = function(story) {
 }
 
 LWP_InkManager.advanceStory = function(story) {
+	console.log("Ink: canContinue?", story.canContinue);
 	if (story.canContinue) {
 		const content = this.getNextContent(story);
 		const tags = story.currentTags;
+		console.log("Ink: content with tags: ", content, tags);
 		if (content != "") {
 			this.showContent(content, tags);
 		}
