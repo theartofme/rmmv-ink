@@ -65,11 +65,11 @@ Getting Started
 Download the javascript port of the Ink engine from here:
 https://github.com/y-lohse/inkjs
 Take the copy of ink.js from the templates/browser_serverless folder and put
-it in your RMMV plugins folder (js/plugins). Download LWP_Ink.js from this
+it in your RMMV plugins folder (js/plugins). Download LWPZ_Ink.js from this
 repo and put it in your RMMV plugins folder, too.
 
-Add both ink.js and LWP_Ink.js to your plugins in RMMV. ink.js must be
-higher in the list than LWP_Ink.js; drag them around to make sure this is the
+Add both ink.js and LWPZ_Ink.js to your plugins in RMMV. ink.js must be
+higher in the list than LWPZ_Ink.js; drag them around to make sure this is the
 case if it's not already.
 
 It's also highly recommended to use a word wrapping plugin. The
@@ -113,7 +113,7 @@ use any RMMV escape codes you want to, as long as anything that conflicts
 with Ink syntax is escaped properly. You should also be able to use custom
 escape codes and notetags that any plugins you use allow.
 
-LWP_Ink also has its own set of controls over the message boxes using Ink
+LWPZ_Ink also has its own set of controls over the message boxes using Ink
 hashtags and by setting up a cast; see the section on hashtags below.
 
 Initialisation
@@ -1147,7 +1147,7 @@ BattleManager.updateEventMain = function() {
 // Game_Interpreter - handling the plugin command that starts everything
 //////////////////////////////////////////////////////////////////
 
-PluginManager.registerCommand("LWP_Ink", "ink", function(args) {
+PluginManager.registerCommand("LWPZ_Ink", "ink", function(args) {
 	this.setWaitMode('ink');
 	LWP_InkManager.go(args.target);
 });
