@@ -17,6 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  * @plugindesc Integrates the Ink story scripting language (https://www.inklestudios.com/ink/) into RPG Maker.
  * @author Logan Pickup
  * @base PluginCommonBase
+ * @base ink
  * @orderAfter PluginCommonBase
  * @url https://github.com/theartofme/rmmv-ink
  * 
@@ -488,7 +489,7 @@ class ChildInterpreter {
 	}
 
 	initFromCommonEvent(eventNumber) {
-		list = $dataCommonEvents[eventNumber].list;
+		const list = $dataCommonEvents[eventNumber].list;
 		this.initFromList(list);
 	}
 
