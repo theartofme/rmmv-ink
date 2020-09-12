@@ -23,7 +23,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  * 
  * @param inkScript
  * @text Ink script
- * @desc Name of the Ink script. Must be exported with the "export to JSON" option, and must be in the data folder.
+ * @desc Name of the Ink script. Must be exported with the "export to JSON" option, and must be in a folder called "ink" in the RMMZ project.
  * @type text
  * @default inkscript.ink.json
  * 
@@ -80,9 +80,9 @@ following word wrap plugins have been tested and confirmed to work:
 Usage
 
 First you need to export your Ink script as JSON. From Inkle, select
-File->Export to JSON... and save the file as inkscript.ink.json in your game's
-data folder. You need to repeat this export process whenever you make changes
-to the script in Inkle.
+File->Export to JSON... and save the file as inkscript.ink.json in a folder
+named ink in your game's folder. You need to repeat this export process
+whenever you make changes to the script in Inkle.
 
 In order to start running Ink from RMMV, just use the plugin command INK.
 Without parameters it starts the Ink script from the begnning and continues
@@ -349,8 +349,8 @@ Localisation
 This plugin supports both IAVRA.MasterLocalization and DKTools_Localization. It can go above or
 below either of those two scripts, it's not important. It will use the currently-set language
 from whichever localisation plugin you have installed to load a localised version of the Ink
-script. If your Ink script is normally "data/script.ink.json" then the localised version should
-be named "data/script.ink-es.json". The text in the "languages" list for the IAVRA.MasterLocalization
+script. If your Ink script is normally "ink/script.ink.json" then the localised version should
+be named "ink/script.ink-es.json". The text in the "languages" list for the IAVRA.MasterLocalization
 plugin will be used if it is active, which is normally a short language code. The text in the
 "Short language name", also known as "Locale", in the DKTools_Localization plugin will be used if
 it is active.
@@ -725,7 +725,7 @@ const LWP_InkManager = {
 	//----------------------------------------------------
 	// init
 
-	inkStoryFilename: "data/" + param.inkScript.trim(),
+	inkStoryFilename: "ink/" + param.inkScript.trim(),
 
 	_inkStory: null,    // only accessed directly by LWP_InkManager.getStory()
 	active: false,
