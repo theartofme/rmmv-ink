@@ -75,7 +75,8 @@ case if it's not already.
 
 It's also highly recommended to use a word wrapping plugin. The
 following word wrap plugins have been tested and confirmed to work:
-* VisuMZ_1_MessageCore
+* VisuMZ_1_MessageCore (RPG Maker MZ)
+* YEP_MessageCore (RPG Maker MV)
 
 Usage
 
@@ -88,7 +89,7 @@ In order to start running Ink from RMMV, just use the plugin command INK.
 Without parameters it starts the Ink script from the begnning and continues
 until it reaches the end. It is probably more useful to use it to start at
 specific paths; just put the knot's name (including a dot and the stitch, if
-	desired), for example:
+desired), for example:
 
 INK admitted_to_something.i_know_where
 
@@ -183,7 +184,8 @@ link_switch(). If the Ink variable is then later assigned a non-boolean type
 (something other than true or false) in Ink then you will not get the results
 you expect; please don't do this.
 
-There is no method for getting Ink variables from RMMV plugin code.
+You can get the value of an Ink variable directly using the javascript code:
+LWP_InkManager.getInkVariable("variablename")
 
 Loading and Saving
 
@@ -250,6 +252,40 @@ Ink content included this way is different from Ink content from the plugin comm
 	synced variables.
 	Choices have no effect. Choices will not be shown and only text from before the
 	choice will be seen.
+
+Using Ink from Javascript
+
+LWP_InkManager can be used from other javascript code to access Ink. It should work
+from other plugins, Javascript in events, and from custom javascript in plugins that
+have this feature. Scripters can just look at the source to find out what is
+available, but this is a list of what is probably the most useful:
+
+LWP_InkManager.getBulkContentWithoutChangingState("knot.stitch")
+	Gets all the text for the Ink path specified. Stitch is optional, just
+	like normal, but knot is mandatory.
+	This function erases all state changes after it gets the text - it is designed
+	to use in things like character descriptions, that should not change the game
+	state every time you view it.
+
+LWP_InkManager.getStory()
+	Gets the Story object. This is just a wrapper around the actual Ink story,
+	if you want access to the underlying inkjs.Story then use
+	LWP_InkManager.getStory()._story
+
+LWP_InkManager.setInkPath()
+	Sets the current Ink path. This does not start Ink running, so this will only take
+	effect if you call LWP_InkManager.go() or use the Ink plugin command without a path.
+
+LWP_InkManager.go(path)
+	Start Ink running from the given path (knot.stitch). You don't have to specify a
+	path, in which case Ink will start running from the current path.
+
+LWP_InkManager.isActive()
+LWP_InkManager.update()
+	These two can be used if you want to put Ink into a custom scene; currently it only
+	runs from the map and battle scenes. LWP_InkManager uses $gameMessage internally to
+	display text and choices, so as long as that works, then you should be able to use
+	these function to put Ink processing in another scene.
 
 External Functions
 
@@ -394,7 +430,7 @@ Imported.LWP_Ink = true;
 		} else {
 			const parameters = PluginManager.parameters("LWP_Ink");
 			return {
-				inkScript: (parameters['ink_script'] || "inkscript.ink.json").trim(),
+				inkScript: (parameters['inkScript'] || "inkscript.ink.json").trim(),
 				enableFormatting: !!(parameters['enableFormatting'] || true),
 				emphasisColour: Number.parseInt(parameters['emphasis_colour'] || 1),
 				useNameBox: !!(parameters['useNameBox'] || true),
@@ -595,26 +631,16 @@ class CastManager {
 			displayData.face = characterData.image;
 			displayData.faceIndex = characterData.index;
 			if (param.useNameBox) {
-				let name = characterData.defaultName;
-				if (characterData.useVariable) {
-					name = story.getVariable(name);
-				}
-				displayData.nameBox = name;
+				displayData.nameBox = this.displayName(characterData, story);
 			}
 			if (characterData.actorIndex) {
 				let actor = $gameActors.actor(characterData.actorIndex);
-				if (param.useNameBox && !characterData.useVariable) {
-					displayData.nameBox = actor.name();
-				}
 				if (!displayData.faceIndex) {
 					displayData.faceIndex = actor.faceIndex();
 				}
 				if (displayData.face === '' || !displayData.face) {
 					displayData.face = actor.faceName();
 				}
-			}
-			if (characterData.realName && param.useNameBox && !characterData.useVariable) {
-				displayData.nameBox = characterData.realName;
 			}
 		}
 
@@ -624,6 +650,32 @@ class CastManager {
 		}
 
 		return displayData;
+	}
+
+	displayName(characterData, story) {
+		let name = characterData.defaultName;
+		if (characterData.useVariable) {
+			name = story.getVariable(name);
+		} else {
+			if (characterData.actorIndex) {
+				let actor = $gameActors.actor(characterData.actorIndex);
+				name = actor.name();
+			}
+			if (characterData.realName) {
+				name = characterData.realName;
+			}
+		}
+		return name;
+	}
+
+	displayNameForActor(actorIndex, story) {
+		for (let tag in this.cast) {
+			characterData = Object.assign({defaultName: tag}, this.cast[tag]);
+			if (characterData.actorIndex === actorIndex) {
+				return this.displayName(characterData, story);
+			}
+		}
+		return null;
 	}
 
 	addCastEntry(name, useVariable, image, index, actorIndex, realName) {
@@ -854,7 +906,7 @@ const LWP_InkManager = {
 	external_LinkVar: function(variableRef, rmmvVariable) {
 		console.log('link_var', variableRef, rmmvVariable);
 		this.variableBindings[variableRef] = rmmvVariable;
-		this.getStory().getVariable(variableRef, $gameVariables.value(rmmvVariable));
+		this.getStory().setVariable(variableRef, $gameVariables.value(rmmvVariable));
 	},
 
 	external_LinkSwitch: function(variableRef, rmmvSwitch) {
@@ -868,7 +920,7 @@ const LWP_InkManager = {
 		this.actorNameBindings[variableRef] = rmmvActorIndex;
 		// works the opposite way to linking variables - the RMMV name is overwritten with
 		// the name defined in the story. This is to allow Ink to control localised names.
-		$gameActors.actor(rmmvActorIndex).setName(this.getStory().getVariable(variableRef));
+		this.setActorName(rmmvActorIndex, this.getStory().getVariable(variableRef));
 	},
 
 	external_cast: function(name, rmmvImageName, defaultImageIndex) {
@@ -976,8 +1028,15 @@ const LWP_InkManager = {
 			$gameSwitches.setValue(this.switchBindings[inkVariable], story.getVariable(inkVariable));
 		}
 		for (let inkVariable of Object.keys(this.actorNameBindings)) {
-			let actor = $gameActors.actor(this.actorNameBindings[inkVariable]);
-			actor.setName(story.getVariable(inkVariable));
+			let actor = this.actorNameBindings[inkVariable];
+			this.setActorName(actor, story.getVariable(inkVariable));
+		}
+		for (let tag in this.cast.cast) {
+			let characterData = Object.assign({defaultName: tag}, this.cast.cast[tag]);
+			if (characterData.actorIndex > 0) {
+				let name = this.cast.displayName(characterData, story);
+				this.setActorName(characterData.actorIndex, name);
+			}
 		}
 	},
 
@@ -986,12 +1045,20 @@ const LWP_InkManager = {
 			story.setVariable(inkVariable, $gameVariables.value(this.variableBindings[inkVariable]));
 		}
 		for (let inkVariable of Object.keys(this.switchBindings)) {
-			story.getVariable(inkVariable, $gameSwitches.value(this.switchBindings[inkVariable]));
+			story.setVariable(inkVariable, $gameSwitches.value(this.switchBindings[inkVariable]));
 		}
 		for (let inkVariable of Object.keys(this.actorNameBindings)) {
 			let actor = $gameActors.actor(this.actorNameBindings[inkVariable]);
-			story.getVariable(inkVariable, actor.name());
+			story.setVariable(inkVariable, actor.name());
 		}
+	},
+
+	getInkVariable: function(variableName) {
+		this.getStory().getVariable(variableName)
+	},
+
+	setActorName: function(actor, name) {
+		$gameActors.actor(actor).setName(name);
 	},
 
 	//----------------------------------------------------
@@ -1026,6 +1093,17 @@ const LWP_InkManager = {
 		let lines = story.getAllAvailableLines();
 		this.syncVariablesToRmmv(story);
 		return lines;
+	},
+
+	getBulkContentWithoutChangingState: function(inkAddress) {
+		const story = LWP_InkManager.getStory();
+		const savedData = story ? story.jsonState : null;
+		LWP_InkManager.setInkPath(inkAddress);
+		const text = LWP_InkManager.getBulkContent(story).map( x => x.content ).join("\n");
+		if (savedData && story) {
+			story.jsonState = savedData;
+		}
+		return text;
 	},
 
 	advanceStory: function(story) {
@@ -1087,6 +1165,7 @@ const LWP_InkManager = {
 	processActionHashtag: function(tag) {
 		if (tag === 'interrupt') {
 			this.stop();
+			return false;
 		} else if (this.matchHashtagCommand(tag, 'common_event')) {
 			let params = this.getHashtagCommandParams(tag);
 			let commonEventIndex = Number.parseInt(params[0]);
@@ -1166,14 +1245,11 @@ Game_Map.prototype.updateEvents = function() {
 // BattleManager - hooking into the update cycle
 //////////////////////////////////////////////////////////////////
 
-const oldBattleManagerUpdateEventMain = BattleManager.updateEventMain;
-BattleManager.updateEventMain = function() {
-	let isBusy = oldBattleManagerUpdateEventMain.call(this);
-	if (!isBusy) {
+const oldBattleManagerUpdate = BattleManager.update;
+BattleManager.update = function() {
+	oldBattleManagerUpdate.call(this);
+	if (!this.isBusy()) {
 		LWP_InkManager.update();
-		return LWP_InkManager.isActive();
-	} else {
-		return isBusy;
 	}
 }
 
@@ -1245,19 +1321,9 @@ const oldWindow_Base_convertEscapeCharacters =
 const inkAnywhereRegex = /\{ink:([^}]+)\}/ig;
 Window_Base.prototype.convertEscapeCharacters = function(text) {
 	text = oldWindow_Base_convertEscapeCharacters.call(this, text);
-	let savedData = null;
-	const story = () => {
-		const _story = LWP_InkManager.getStory();
-		savedData = _story ? _story.jsonState : null;
-		return _story;
-	};
 	text = text.replace(inkAnywhereRegex, (match, inkAddress) => {
-		LWP_InkManager.setInkPath(inkAddress);
-		return LWP_InkManager.getBulkContent(story()).map( x => x.content ).join("\n");
+		return LWP_InkManager.getBulkContentWithoutChangingState(inkAddress);
 	});
-	if (savedData) {
-		LWP_InkManager.getStory().jsonState = savedData;
-	}
 	return text;
 };
 
