@@ -1,0 +1,4 @@
+[
+null,
+{"id":1,"actions":[{"skillId":13,"rating":9,"conditionType":6,"conditionParam1":1,"conditionParam2":0},{"skillId":12,"rating":1,"conditionType":0,"conditionParam1":0,"conditionParam2":0}],"battlerHue":0,"battlerName":"Foxman","dropItems":[{"dataId":1,"denominator":1,"kind":0},{"dataId":1,"denominator":1,"kind":0},{"dataId":1,"denominator":1,"kind":0}],"exp":10,"traits":[{"code":22,"dataId":0,"value":1},{"code":22,"dataId":1,"value":0},{"code":31,"dataId":1,"value":0}],"gold":5,"name":"Fox Scribe","note":"","params":[200,0,25,20,20,20,20,20]}
+]

@@ -1,0 +1,4 @@
+[
+null,
+{"id":1,"displayType":0,"effectName":"HitPhysical","flashTimings":[{"frame":0,"duration":30,"color":[255,255,255,255]}],"name":"Hit Physical","offsetX":0,"offsetY":0,"rotation":{"x":0,"y":0,"z":0},"scale":50,"soundTimings":[],"speed":100}
+]

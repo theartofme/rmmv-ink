@@ -1,0 +1,6 @@
+[
+null,
+{"id":1,"atypeId":1,"description":"","etypeId":4,"traits":[{"code":22,"dataId":1,"value":0}],"iconIndex":135,"name":"-----Armors","note":"","params":[0,0,0,1,0,0,0,0],"price":100},
+{"id":2,"atypeId":0,"description":"","etypeId":2,"traits":[{"code":22,"dataId":1,"value":0}],"iconIndex":0,"name":"","note":"","params":[0,0,0,0,0,0,0,0],"price":0},
+{"id":3,"atypeId":1,"description":"[General Equipment] A vest made of tanned hide.","etypeId":4,"traits":[{"code":22,"dataId":1,"value":0}],"iconIndex":135,"name":"Leather Vest","note":"","params":[0,0,0,3,0,0,0,0],"price":200}
+]
