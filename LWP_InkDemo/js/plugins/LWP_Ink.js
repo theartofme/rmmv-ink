@@ -631,26 +631,16 @@ class CastManager {
 			displayData.face = characterData.image;
 			displayData.faceIndex = characterData.index;
 			if (param.useNameBox) {
-				let name = characterData.defaultName;
-				if (characterData.useVariable) {
-					name = story.getVariable(name);
-				}
-				displayData.nameBox = name;
+				displayData.nameBox = this.displayName(characterData, story);
 			}
 			if (characterData.actorIndex) {
 				let actor = $gameActors.actor(characterData.actorIndex);
-				if (param.useNameBox && !characterData.useVariable) {
-					displayData.nameBox = actor.name();
-				}
 				if (!displayData.faceIndex) {
 					displayData.faceIndex = actor.faceIndex();
 				}
 				if (displayData.face === '' || !displayData.face) {
 					displayData.face = actor.faceName();
 				}
-			}
-			if (characterData.realName && param.useNameBox && !characterData.useVariable) {
-				displayData.nameBox = characterData.realName;
 			}
 		}
 
@@ -660,6 +650,32 @@ class CastManager {
 		}
 
 		return displayData;
+	}
+
+	displayName(characterData, story) {
+		let name = characterData.defaultName;
+		if (characterData.useVariable) {
+			name = story.getVariable(name);
+		} else {
+			if (characterData.actorIndex) {
+				let actor = $gameActors.actor(characterData.actorIndex);
+				name = actor.name();
+			}
+			if (characterData.realName) {
+				name = characterData.realName;
+			}
+		}
+		return name;
+	}
+
+	displayNameForActor(actorIndex, story) {
+		for (let tag in this.cast) {
+			characterData = Object.assign({defaultName: tag}, this.cast[tag]);
+			if (characterData.actorIndex === actorIndex) {
+				return this.displayName(characterData, story);
+			}
+		}
+		return null;
 	}
 
 	addCastEntry(name, useVariable, image, index, actorIndex, realName) {
@@ -904,7 +920,7 @@ const LWP_InkManager = {
 		this.actorNameBindings[variableRef] = rmmvActorIndex;
 		// works the opposite way to linking variables - the RMMV name is overwritten with
 		// the name defined in the story. This is to allow Ink to control localised names.
-		$gameActors.actor(rmmvActorIndex).setName(this.getStory().getVariable(variableRef));
+		this.setActorName(rmmvActorIndex, this.getStory().getVariable(variableRef));
 	},
 
 	external_cast: function(name, rmmvImageName, defaultImageIndex) {
@@ -1012,8 +1028,15 @@ const LWP_InkManager = {
 			$gameSwitches.setValue(this.switchBindings[inkVariable], story.getVariable(inkVariable));
 		}
 		for (let inkVariable of Object.keys(this.actorNameBindings)) {
-			let actor = $gameActors.actor(this.actorNameBindings[inkVariable]);
-			actor.setName(story.getVariable(inkVariable));
+			let actor = this.actorNameBindings[inkVariable];
+			this.setActorName(actor, story.getVariable(inkVariable));
+		}
+		for (let tag in this.cast.cast) {
+			let characterData = Object.assign({defaultName: tag}, this.cast.cast[tag]);
+			if (characterData.actorIndex > 0) {
+				let name = this.cast.displayName(characterData, story);
+				this.setActorName(characterData.actorIndex, name);
+			}
 		}
 	},
 
@@ -1032,6 +1055,10 @@ const LWP_InkManager = {
 
 	getInkVariable: function(variableName) {
 		this.getStory().getVariable(variableName)
+	},
+
+	setActorName: function(actor, name) {
+		$gameActors.actor(actor).setName(name);
 	},
 
 	//----------------------------------------------------
@@ -1138,6 +1165,7 @@ const LWP_InkManager = {
 	processActionHashtag: function(tag) {
 		if (tag === 'interrupt') {
 			this.stop();
+			return false;
 		} else if (this.matchHashtagCommand(tag, 'common_event')) {
 			let params = this.getHashtagCommandParams(tag);
 			let commonEventIndex = Number.parseInt(params[0]);
