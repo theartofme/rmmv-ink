@@ -45,6 +45,30 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  * @type boolean
  * @default true
  * 
+ * @param preMessageCommonEvent
+ * @text Common event before showing text
+ * @desc The common event to run before a line of text is shown. Can be used to set up custom message box styles, etc.
+ * @type common_event
+ * @default 0
+ * 
+ * @param postMessageCommonEvent
+ * @text Common event after showing text
+ * @desc The common event to run after a line of text is shown. This event will run before any common event specified using the #common_event hashtag.
+ * @type common_event
+ * @default 0
+ * 
+ * @param nameVariable
+ * @text Name variable
+ * @desc The variable to store the current speaker's name, if any of the cast options (script-style or hastag-style) are used.
+ * @type variable
+ * @default 0
+ * 
+ * @param expressionVariable
+ * @text Expression variable
+ * @desc The variable to store the current speaker's expression - this will be any hashtag that is not recognised as anything else. Only the first unrecognised hashtag will go in this variable, additional ones will be ignored.
+ * @type variable
+ * @default 0
+ * 
  * @command ink
  * @text Execute Ink script
  * @desc Makes the specified picture clickable.
@@ -339,7 +363,8 @@ The following hashtags can be used:
 		it finishes, after which Ink will resume again. If Ink is called again from the common
 		event then the current Ink knot will be overwritten by the new target, but Ink will
 		still not start running until the common event finishes; this is unintuitive, so it is
-		best to just avoid calling Ink from a common event called by Ink.
+		best to just avoid calling Ink from a common event called by Ink. The common event is
+		called just after the text is output for the line it is on.
 	#battle(troopId,winTarget,escapeTarget,loseTarget) Starts a battle. It is possible to just
 		pass control to a common event and start the battle from there, but this way allows you
 		to jump easily jump to different Ink paths based on the outcome of the battle (it is
@@ -434,6 +459,10 @@ Imported.LWP_Ink = true;
 				enableFormatting: !!(parameters['enableFormatting'] || true),
 				emphasisColour: Number.parseInt(parameters['emphasis_colour'] || 1),
 				useNameBox: !!(parameters['useNameBox'] || true),
+				preMessageCommonEvent: Number.parseInt(parameters['preMessageCommonEvent']),
+				postMessageCommonEvent: Number.parseInt(parameters['postMessageCommonEvent']),
+				nameVariable: Number.parseInt(parameters['nameVariable']),
+				expressionVariable: Number.parseInt(parameters['expressionVariable']),
 			};
 		}
 	}();
@@ -614,6 +643,14 @@ class CastManager {
 				expression = {tag, imageIndex: this.expressions[tag]};
 			}
 		}
+		if (expression === null) {
+			let unrecognisedTags = tags
+				.filter(tag => typeof(this.cast[tag]) === 'undefined')
+				.filter(tag => ['common_event', 'interrupt', 'battle', 'window', 'dim', 'transparent', 'top', 'middle', 'bottom'].indexOf(tag) === -1)
+			if (unrecognisedTags.length > 0) {
+				expression = {tag: unrecognisedTags[0]};
+			}
+		}
 
 		let playScriptMatch = line.match(/^([\w\s]+):\s*/);
 		if (playScriptMatch) {
@@ -622,7 +659,8 @@ class CastManager {
 				displayData.content = line.substring(playScriptMatch[0].length);
 				characterData = Object.assign({defaultName: name}, this.cast[name]);
 			} else {
-				console.warn("Could not find cast member " + name + " from line, ignoring: " + line);
+				console.warn("Could not find cast member " + name + " from line, ignoring namebox data for line but setting name values anyway: " + line);
+				displayData.name = name;
 			}
 		}
 
@@ -630,8 +668,9 @@ class CastManager {
 			console.log('#cast', characterData);
 			displayData.face = characterData.image;
 			displayData.faceIndex = characterData.index;
+			displayData.name = this.displayName(characterData, story);
 			if (param.useNameBox) {
-				displayData.nameBox = this.displayName(characterData, story);
+				displayData.nameBox = displayData.name;
 			}
 			if (characterData.actorIndex) {
 				let actor = $gameActors.actor(characterData.actorIndex);
@@ -646,7 +685,10 @@ class CastManager {
 
 		if (expression) {
 			console.log('#expression', expression);
-			displayData.faceIndex = expression.imageIndex;
+			if (typeof(expression.imageIndex) !== 'undefined') {
+				displayData.faceIndex = expression.imageIndex;
+			}
+			displayData.expression = expression.tag;
 		}
 
 		return displayData;
@@ -1020,7 +1062,7 @@ const LWP_InkManager = {
 	//----------------------------------------------------
 	// variable syncing for automatically synced variables
 
-	syncVariablesToRmmv: function(story) {
+	syncVariablesToRmmv: function(story, displayData) {
 		for (let inkVariable of Object.keys(this.variableBindings)) {
 			$gameVariables.setValue(this.variableBindings[inkVariable], story.getVariable(inkVariable));
 		}
@@ -1037,6 +1079,12 @@ const LWP_InkManager = {
 				let name = this.cast.displayName(characterData, story);
 				this.setActorName(characterData.actorIndex, name);
 			}
+		}
+		if (displayData && param.nameVariable) {
+			$gameVariables.setValue(param.nameVariable, displayData.name);
+		}
+		if (displayData && param.expressionVariable) {
+			$gameVariables.setValue(param.expressionVariable, displayData.expression);
 		}
 	},
 
@@ -1070,17 +1118,19 @@ const LWP_InkManager = {
 		}
 		if (!this.dequeueAndRunAction() && this.active) {
 			const story = this.getStory();
-			const tags = this.advanceStory(story);
+			const {tags, async} = this.advanceStory(story);
 			const canShowChoices = this.processActionHashtags(tags);
-			if(canShowChoices) {
-				this.checkChoices(story);
-			}
-			if (!story.canContinue && !story.hasChoices) {
-				this.stop();
-			}
-			if (this.stopAfterMessage && !$gameMessage.hasText()) {
-				console.log("Ink: deactivating");
-				this.active = false;
+			if (!async) {
+				if(canShowChoices) {
+					this.checkChoices(story);
+				}
+				if (!story.canContinue && !story.hasChoices) {
+					this.stop();
+				}
+				if (this.stopAfterMessage && !$gameMessage.hasText()) {
+					console.log("Ink: deactivating");
+					this.active = false;
+				}
 			}
 		}
 	},
@@ -1091,7 +1141,7 @@ const LWP_InkManager = {
 	getBulkContent: function(story) {
 		this.syncVariablesToInk(story);
 		let lines = story.getAllAvailableLines();
-		this.syncVariablesToRmmv(story);
+		this.syncVariablesToRmmv(story, null);
 		return lines;
 	},
 
@@ -1110,14 +1160,43 @@ const LWP_InkManager = {
 		if (story.canContinue) {
 			this.syncVariablesToInk(story);
 			const {content, tags} = story.getNextLine();
-			this.syncVariablesToRmmv(story);
+			let async = false;
+			const displayData = this.getParsedDisplayData(content, tags);
+			this.syncVariablesToRmmv(story, displayData);
+			if (param.preMessageCommonEvent) {
+				this.enqueueAction(() => {
+					this.runCommonEvent(param.preMessageCommonEvent);
+				});
+				async = true;
+			}
 			console.log("Ink: content with tags: ", content, tags);
 			if (content != "") {
-				this.showContent(content, tags);
+				if (async) {
+					this.enqueueAction(() => {
+						this.showContent(displayData);
+					});
+				} else {
+					this.showContent(displayData);
+				}
+				if (param.postMessageCommonEvent) {
+					this.enqueueAction(() => {
+						this.runCommonEvent(param.postMessageCommonEvent);
+					});
+				}
 			}
-			return tags;
+			return {tags, async};
 		}
-		return [];
+		return {tags: [], async: false};
+	},
+
+	getParsedDisplayData: function(content, tags) {
+		const displayData = this._outputHandler.getDisplayData(content, tags)
+		Object.assign(
+			displayData,
+			this.cast.getDisplayData(displayData.content, tags, this.getStory())
+		);
+		console.log(displayData);
+		return displayData;
 	},
 
 	checkChoices: function(story) {
@@ -1129,14 +1208,8 @@ const LWP_InkManager = {
 		}
 	},
 
-	showContent: function(content, tags) {
+	showContent: function(displayData) {
 		// TODO: word wrapping, buffering leftover text for next time
-		const displayData = this._outputHandler.getDisplayData(content, tags)
-		Object.assign(
-			displayData,
-			this.cast.getDisplayData(displayData.content, tags, this.getStory())
-		);
-		console.log(displayData);
 		this._outputHandler.showContentInMessageBox(displayData);
 	},
 
@@ -1170,7 +1243,9 @@ const LWP_InkManager = {
 			let params = this.getHashtagCommandParams(tag);
 			let commonEventIndex = Number.parseInt(params[0]);
 			console.log("LWP_Ink running common event " + commonEventIndex);
-			this.runCommonEvent(commonEventIndex);
+			this.enqueueAction(() => {
+				this.runCommonEvent(commonEventIndex);
+			});
 			return false;
 		} else if (this.matchHashtagCommand(tag, 'battle')) {
 			let params = this.getHashtagCommandParams(tag);

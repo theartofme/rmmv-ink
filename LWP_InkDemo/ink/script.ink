@@ -33,7 +33,7 @@ VAR initialised=false
 // actor(1) sets the actor that is linked to this cast member. If an actor is linked, the actor's face set in the RPG Maker database will be used as the face in the message box, and the actor's name will be synced from Ink to RPG Maker.
 // image(People2, 7) sets the face that will be used in the messge box for this cast member. This takes precedence over the actor's face, if an actor is also set for this cast member. Careful with lowercase/uppercase, the filename must match exactly! Unlike many things in RPG Maker, the number of the face image starts from 0, not 1.
 R: actor(1) name(Reid)
-Syd: image(People2, 7)
+Syd: image(Actor1, 7)
 -> DONE
 
 == intro ==
