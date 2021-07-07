@@ -46,8 +46,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  * @default true
  * 
  * @param useFaces
- * @text Use default RPG Maker faces in dialog
- * @desc Turn this on to enable using the RPG Maker faces. Turn this off if you are using something custom, e.g. a busts script.
+ * @text Use faces
+ * @desc Turn this on to enable using the RPG Maker faces in dialogs. Turn this off if you are using something custom, e.g. a busts script.
  * @type boolean
  * @default true
  * 
