@@ -45,6 +45,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
  * @type boolean
  * @default true
  * 
+ * @param useFaces
+ * @text Use default RPG Maker faces in dialog
+ * @desc Turn this on to enable using the RPG Maker faces. Turn this off if you are using something custom, e.g. a busts script.
+ * @type boolean
+ * @default true
+ * 
  * @param preMessageCommonEvent
  * @text Common event before showing text
  * @desc The common event to run before a line of text is shown. Can be used to set up custom message box styles, etc.
@@ -451,19 +457,34 @@ Imported.LWP_Ink = true;
     const param = function() {
 		// use RMMZ's extended plugin manager if available, since it's awesome
 		if (typeof(PluginManagerEx) === 'function') {
-			return PluginManagerEx.createParameter(document.currentScript);
+			let params = PluginManagerEx.createParameter(document.currentScript);
+			console.log("Parameters from RMMZ", params);
+			return params;
 		} else {
+			let parseBoolean = function(str, defaultValue) {
+				if (str === null || typeof(str) === 'undefined') {
+					return defaultValue;
+				}
+				let normalised = str.toLowerCase().trim();
+				if (normalised.startsWith("t") || normalised.startsWith("y") || normalised === "on") {
+					return true;
+				}
+				return false;
+			}
 			const parameters = PluginManager.parameters("LWP_Ink");
-			return {
+			let params = {
 				inkScript: (parameters['inkScript'] || "inkscript.ink.json").trim(),
-				enableFormatting: !!(parameters['enableFormatting'] || true),
+				enableFormatting: parseBoolean(parameters['enableFormatting'], true),
 				emphasisColour: Number.parseInt(parameters['emphasis_colour'] || 1),
-				useNameBox: !!(parameters['useNameBox'] || true),
+				useNameBox: parseBoolean(parameters['useNameBox'], true),
+				useFaces: parseBoolean(parameters['useFaces'], true),
 				preMessageCommonEvent: Number.parseInt(parameters['preMessageCommonEvent']),
 				postMessageCommonEvent: Number.parseInt(parameters['postMessageCommonEvent']),
 				nameVariable: Number.parseInt(parameters['nameVariable']),
 				expressionVariable: Number.parseInt(parameters['expressionVariable']),
 			};
+			console.log("Parameters from RMMV", parameters, params);
+			return params;
 		}
 	}();
 
@@ -772,10 +793,12 @@ class CastManager {
 //////////////////////////////////////////////////////////////////
 class OutputHandler {
 	showContentInMessageBox(displayData) {
-		$gameMessage.setFaceImage(displayData.face, displayData.faceIndex);
+		if (param.useFaces) {
+			$gameMessage.setFaceImage(displayData.face, displayData.faceIndex);
+		}
 		$gameMessage.setBackground(displayData.background);
 		$gameMessage.setPositionType(displayData.position);
-		if (displayData.nameBox) {
+		if (param.useNameBox && displayData.nameBox) {
 			if (typeof($gameMessage.setSpeakerName) === 'function') {
 				// RMMZ native name box
 				$gameMessage.setSpeakerName(displayData.nameBox);
