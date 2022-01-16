@@ -1344,8 +1344,8 @@ Game_Map.prototype.updateEvents = function() {
 //////////////////////////////////////////////////////////////////
 
 const oldBattleManagerUpdate = BattleManager.update;
-BattleManager.update = function() {
-	oldBattleManagerUpdate.call(this);
+BattleManager.update = function(isTimeActive) {
+	oldBattleManagerUpdate.call(this, isTimeActive);
 	if (!this.isBusy()) {
 		LWP_InkManager.update();
 	}
