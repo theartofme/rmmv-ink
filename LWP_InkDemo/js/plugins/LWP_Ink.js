@@ -396,6 +396,9 @@ The following hashtags can be used:
 	#expression If the hashtag is the name of an expression defined with
 		expression(expression, index) then it will cause the image index to change to the one
 		specified for the expression. The image used will not change.
+	#audio(se name) Plays the sound effect when the dialog for this line of text is shown. If
+		this option is used, all sound effects will stop playing before playing this sound,
+		and all sound effects will also be stopped when Ink has finished showing dialogs.
 
 A full example of using cast() and expression with hashtags:
 
