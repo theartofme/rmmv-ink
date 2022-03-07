@@ -97,6 +97,14 @@ Syd: Check the book next to me to see how it's done.
 >Syd: Check the book next to me to see how it's done. #dim #middle
 -> DONE
 
+== audio
+
+= voiceover
+You can use the \#audio(sound effect name) hashtag to do voiceovers and play other sound effects.
+This dialog has audio! #audio(laugh)
+Audio is automatically stopped when the dialog is closed.
+-> DONE
+
 == names
 TODO
 -> DONE

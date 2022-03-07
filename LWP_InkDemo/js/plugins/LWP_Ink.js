@@ -807,6 +807,17 @@ class OutputHandler {
 				displayData.content = '\\n<' + displayData.nameBox + '>' + displayData.content;
 			}
 		}
+		
+		if (displayData.audio) {
+			AudioManager.stopSe();
+			AudioManager.playSe({
+				"name": displayData.audio,
+				"volume": 100,
+				"pitch": 100,
+				"pan":0
+			});
+		}
+
 		const content = this.formatText(displayData.content);
 		if (Imported.YEP_MessageCore && typeof($gameMessage.addText) === 'function') {
 			// RMMV YEP_MessageCore word wrapping
@@ -851,6 +862,9 @@ class OutputHandler {
 				displayData.background = 1;
 			} else if (/transparent/i.test(tag)) {
 				displayData.background = 2;
+			} else if (matchHashtagCommand(tag, 'audio')) {
+				let params = getHashtagCommandParams(tag);
+				displayData.audio = params[0];
 			}
 		}
 		return displayData;
@@ -880,6 +894,7 @@ const LWP_InkManager = {
 	_inkStory: null,    // only accessed directly by LWP_InkManager.getStory()
 	active: false,
 	stopAfterMessage: false,
+	stopSoundOnDeactivation: false,
 	variableBindings: {},
 	switchBindings: {},
 	actorNameBindings: {},
@@ -1152,6 +1167,9 @@ const LWP_InkManager = {
 				}
 				if (this.stopAfterMessage && !$gameMessage.hasText()) {
 					console.log("Ink: deactivating");
+					if (this.stopSoundOnDeactivation) {
+						AudioManager.stopSe();
+					}
 					this.active = false;
 				}
 			}
@@ -1193,6 +1211,9 @@ const LWP_InkManager = {
 				async = true;
 			}
 			console.log("Ink: content with tags: ", content, tags);
+			if (displayData.audio) {
+				this.stopSoundOnDeactivation = true;
+			}
 			if (content != "") {
 				if (async) {
 					this.enqueueAction(() => {
@@ -1239,22 +1260,6 @@ const LWP_InkManager = {
 	//----------------------------------------------------
 	// non-display hashtag processing
 
-	matchHashtagCommand: function(tag, command) {
-		return tag.startsWith(command + '(')
-	},
-
-	getHashtagCommandParams: function(tag) {
-		let paramStart = tag.indexOf('(') + 1;
-		let paramEnd = tag.indexOf(')', paramStart);
-		if (paramEnd === -1) return [];
-		let parameterText = tag.substring(paramStart, paramEnd);
-		return parameterText.split(/,/).map(x => {
-			let trimmed = x.trim();
-			if (trimmed.length === 0) return null;
-			else return trimmed;
-		});
-	},
-
 	// return true if choices can be shown this tick, false if something
 	// else is going on and the choices (if any) should be shown when
 	// the engine is next free
@@ -1262,16 +1267,16 @@ const LWP_InkManager = {
 		if (tag === 'interrupt') {
 			this.stop();
 			return false;
-		} else if (this.matchHashtagCommand(tag, 'common_event')) {
-			let params = this.getHashtagCommandParams(tag);
+		} else if (matchHashtagCommand(tag, 'common_event')) {
+			let params = getHashtagCommandParams(tag);
 			let commonEventIndex = Number.parseInt(params[0]);
 			console.log("LWP_Ink running common event " + commonEventIndex);
 			this.enqueueAction(() => {
 				this.runCommonEvent(commonEventIndex);
 			});
 			return false;
-		} else if (this.matchHashtagCommand(tag, 'battle')) {
-			let params = this.getHashtagCommandParams(tag);
+		} else if (matchHashtagCommand(tag, 'battle')) {
+			let params = getHashtagCommandParams(tag);
 			this.enqueueAction(() => {
 				this.startBattle(
 					Number.parseInt(params[0]),
@@ -1430,5 +1435,26 @@ Window_Base.prototype.convertEscapeCharacters = function(text) {
 // Global export, so other scripts can call it
 //////////////////////////////////////////////////////////////////
 window.LWP_InkManager = LWP_InkManager;
+
+//////////////////////////////////////////////////////////////////
+// Utility functions used by multiple classes
+//////////////////////////////////////////////////////////////////
+
+
+function matchHashtagCommand(tag, command) {
+	return tag.startsWith(command + '(')
+}
+
+function getHashtagCommandParams(tag) {
+	let paramStart = tag.indexOf('(') + 1;
+	let paramEnd = tag.indexOf(')', paramStart);
+	if (paramEnd === -1) return [];
+	let parameterText = tag.substring(paramStart, paramEnd);
+	return parameterText.split(/,/).map(x => {
+		let trimmed = x.trim();
+		if (trimmed.length === 0) return null;
+		else return trimmed;
+	});
+}
 
 })();
