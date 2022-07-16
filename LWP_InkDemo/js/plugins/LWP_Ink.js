@@ -511,6 +511,10 @@ class StoryWrapper {
 	}
 
 	getNextLine() {
+		if (this._story.hasError) {
+			console.log("INK: Errors in story file:", this._story.currentErrors);
+			this._story.ResetErrors();
+		}
 		const content = this._story.Continue().trim();
 		const tags = this._story.currentTags;
 		return {content, tags};
@@ -1158,10 +1162,32 @@ const LWP_InkManager = {
 			return;
 		}
 		if (!this.dequeueAndRunAction() && this.active) {
+			let async = false;
+
 			const story = this.getStory();
-			const {tags, async} = this.advanceStory(story);
+			const {tags, displayData, hasContent} = this.advanceStory(story);
 			const canShowChoices = this.processActionHashtags(tags);
+			if (hasContent && param.preMessageCommonEvent) {
+				this.enqueueAction(() => {
+					this.runCommonEvent(param.preMessageCommonEvent);
+				});
+				this.enqueueAction(() => {
+					this.showContent(displayData);
+					if(canShowChoices) {
+						this.checkChoices(story);
+					}
+				});
+				async = true;
+			}
+			if (param.postMessageCommonEvent) {
+				this.enqueueAction(() => {
+					this.runCommonEvent(param.postMessageCommonEvent);
+				});
+			}
 			if (!async) {
+				if (hasContent) {
+					this.showContent(displayData);
+				}
 				if(canShowChoices) {
 					this.checkChoices(story);
 				}
@@ -1204,36 +1230,13 @@ const LWP_InkManager = {
 		if (story.canContinue) {
 			this.syncVariablesToInk(story);
 			const {content, tags} = story.getNextLine();
-			let async = false;
 			const displayData = this.getParsedDisplayData(content, tags);
 			this.syncVariablesToRmmv(story, displayData);
-			if (param.preMessageCommonEvent) {
-				this.enqueueAction(() => {
-					this.runCommonEvent(param.preMessageCommonEvent);
-				});
-				async = true;
-			}
+
 			console.log("Ink: content with tags: ", content, tags);
-			if (displayData.audio) {
-				this.stopSoundOnDeactivation = true;
-			}
-			if (content != "") {
-				if (async) {
-					this.enqueueAction(() => {
-						this.showContent(displayData);
-					});
-				} else {
-					this.showContent(displayData);
-				}
-				if (param.postMessageCommonEvent) {
-					this.enqueueAction(() => {
-						this.runCommonEvent(param.postMessageCommonEvent);
-					});
-				}
-			}
-			return {tags, async};
+			return {tags, displayData, hasContent: content != ""};
 		}
-		return {tags: [], async: false};
+		return {tags: [], displayData: null, hasContent: false};
 	},
 
 	getParsedDisplayData: function(content, tags) {
@@ -1256,6 +1259,9 @@ const LWP_InkManager = {
 	},
 
 	showContent: function(displayData) {
+		if (displayData.audio) {
+			this.stopSoundOnDeactivation = true;
+		}
 		// TODO: word wrapping, buffering leftover text for next time
 		this._outputHandler.showContentInMessageBox(displayData);
 	},

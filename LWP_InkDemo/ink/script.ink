@@ -75,9 +75,10 @@ Position and background can be combined, just like in RPG Maker. This is \#top \
 >Position and background can be combined, just like in RPG Maker. This is \#top \#dim. \#top \#dim #dim #middle
 -> DONE
 
-TODO: hashtags for actor images, then show the better way using dramatis personae. Save cast() for "advanced".
-
-= setting_up_a_cast
+= choices
+Any branches in Ink will be shown as choices in RPG Maker, like this:
+* [Go left] -> DONE
+* [Go right] -> DONE
 -> DONE
 
 = script_style_dialog
@@ -95,6 +96,15 @@ Syd: Check the book next to me to see how it's done.
 >Syd: For example, if you have this line: Syd: Hi! #dim #middle
 >Syd: Hi! #dim #middle
 >Syd: Check the book next to me to see how it's done. #dim #middle
+-> DONE
+
+== setting_up_a_cast
+TODO: hashtags for actor images, then show the better way using dramatis personae. Save cast() for "advanced".
+= changing_the_cast
+Now we're going to play with cast(). See the "dramatis_personae" knot in script.ink for the original definitions in case you get lost.
+Reid is linked to an actor, so it's easy to change his details. We're going to pause Ink for a bit to allow the RPG Maker actions alter the actor for a bit. #interrupt
+Now we're back! And now Reid is...
+R: Hi, I was Reid!
 -> DONE
 
 == audio
