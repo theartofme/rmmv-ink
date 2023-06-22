@@ -800,7 +800,7 @@ class CastManager {
 //////////////////////////////////////////////////////////////////
 class OutputHandler {
 	showContentInMessageBox(displayData) {
-		if (param.useFaces) {
+		if (param.useFaces && displayData.face && displayData.face != '') {
 			$gameMessage.setFaceImage(displayData.face, displayData.faceIndex);
 		}
 		$gameMessage.setBackground(displayData.background);
