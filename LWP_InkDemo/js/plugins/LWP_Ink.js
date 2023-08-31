@@ -1066,11 +1066,17 @@ const LWP_InkManager = {
 		}
 		this.active = true;
 		this.stopAfterMessage = false;
+		this.stopBeforeMessage = false;
 	},
 
 	stop: function() {
 		console.log("INK: stopping");
 		this.stopAfterMessage = true;
+	},
+
+	interrupt: function() {
+		console.log("INK: stopping due to #interrupt");
+		this.stopBeforeMessage = true;
 	},
 
 	isActive: function() {
@@ -1161,7 +1167,10 @@ const LWP_InkManager = {
 		if (this._childInterpreter.update() || $gameMessage.isBusy()) {
 			return;
 		}
-		if (!this.dequeueAndRunAction() && this.active) {
+		const asyncActionRan = this.dequeueAndRunAction();
+		if (!asyncActionRan && this.active && this.stopBeforeMessage) {
+			this.deactivate();
+		} else if (!asyncActionRan && this.active) {
 			let async = false;
 
 			const story = this.getStory();
@@ -1195,14 +1204,23 @@ const LWP_InkManager = {
 					this.stop();
 				}
 				if (this.stopAfterMessage && !$gameMessage.hasText()) {
-					console.log("Ink: deactivating");
-					if (this.stopSoundOnDeactivation) {
-						AudioManager.stopSe();
-					}
-					this.active = false;
+					this.deactivate();
 				}
 			}
 		}
+	},
+
+	/**
+	 * Sets this.active to false, and shuts down anything else that should be
+	 * stopped when Ink stops.
+	 */
+	deactivate: function() {
+		console.log("Ink: deactivating");
+		if (this.stopSoundOnDeactivation) {
+			AudioManager.stopSe();
+		}
+		this.active = false;
+		this.stopBeforeMessage = false;
 	},
 
 	/**
@@ -1274,7 +1292,7 @@ const LWP_InkManager = {
 	// the engine is next free
 	processActionHashtag: function(tag) {
 		if (tag === 'interrupt') {
-			this.stop();
+			this.interrupt();
 			return false;
 		} else if (matchHashtagCommand(tag, 'common_event')) {
 			let params = getHashtagCommandParams(tag);

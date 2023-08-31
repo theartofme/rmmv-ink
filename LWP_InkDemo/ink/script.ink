@@ -34,6 +34,7 @@ VAR initialised=false
 // image(People2, 7) sets the face that will be used in the messge box for this cast member. This takes precedence over the actor's face, if an actor is also set for this cast member. Careful with lowercase/uppercase, the filename must match exactly! Unlike many things in RPG Maker, the number of the face image starts from 0, not 1.
 R: actor(1) name(Reid)
 Syd: image(Actor1, 7)
+J: name(Jo)
 -> DONE
 
 == intro ==
@@ -88,6 +89,8 @@ Syd: Just write a line in your ink file starting with a name, a colon, and whate
 Syd: For example, if you have this line: Syd: Hi!
 Syd: Hi!
 Syd: Check the book next to me to see how it's done.
+Mary: I haven't been given a cast entry, so I don't have a portrait.
+J: I do have a cast entry, but no portrait.
 -> DONE
 = script_style_dialog_src
 >Syd: This dialogue uses the "script" format. It is a convenient way to show messages with automatic name boxes and face images. #dim #middle
@@ -96,6 +99,8 @@ Syd: Check the book next to me to see how it's done.
 >Syd: For example, if you have this line: Syd: Hi! #dim #middle
 >Syd: Hi! #dim #middle
 >Syd: Check the book next to me to see how it's done. #dim #middle
+>Mary: I haven't been given a cast entry, so I don't have a portrait. #dim #middle
+>J: I do have a cast entry, but no portrait. #dim #middle
 -> DONE
 
 == setting_up_a_cast
@@ -167,6 +172,12 @@ R: It will loop back to the first description, but it's still more interesting t
 Myst: Sometimes you'd like a character's name to be a secret in some dialogues, and reveal the name later.
 TODO: show how to do this!
 ->DONE
+
+== tests
+= interrupt
+I'm going to pause for a bit. #interrupt
+Hey, I'm back!
+-> DONE
 
 // These placeholder functions are not called; they make sure the Ink compiler
 // produces a file that will run. Without these placeholders weird things can happen.
